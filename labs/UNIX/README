@@ -1,0 +1,88 @@
+1.1
+---------------------
+The problem is that the pointer is not dynamically allocated. That is, the pointer
+is not allocated any memory on the heap (using malloc). To fix this, do the
+following:
+
+void test1() {
+    int *a = (int *) malloc(sizeof(int));
+    if (!a) {
+        printf("Out of memory\n");
+        exit(-1);
+    }
+    *a = 3;
+    *a = *a + 2;
+    printf("%d\n", *a);
+}
+
+1.2
+---------------------
+The problem is that b is an int variable, and not an int *. This can be 
+fixed with the following declaration:
+
+int *a, *b;
+
+1.3
+---------------------
+The problem is that the array is not allocated with the correct size. It is only
+allocated 1000 bytes, whereas (assuming 4 byte integers) the array needs 
+4000 bytes to hold 1000 integers. This can be fixed with the following 
+declaration:
+
+int i, *a = (int *) malloc(1000 * sizeof(int));
+
+1.4 
+---------------------
+The problem, again, is in the allocation of the array. As is, the allocation 
+is setting a to be an array of 3 (int *) types. However, these (int *) arrays
+need to also be allocated. So the correct version would look like the following:
+
+
+void test4() {
+    int **a = (int **) malloc(3 * sizeof(int *));
+    int i;
+    for (i = 0; i < 3; i++)
+        a[i] = (int *) malloc(100 * sizeof(int));
+    a[1][1] = 5;
+}
+
+1.5
+---------------------
+The problem occurs when checking if the value pointed to by a is 0. This condition
+is not checked; what is checked is if the pointer itself is 0. To fix this,
+the following can be written:
+
+void test5() {
+    int *a = (int *) malloc(sizeof(int));
+    scanf("%d", a);
+    if (!*a)
+        printf("Value is 0\n");
+}
+
+
+2.1
+---------------------
+The first calculation is more parallelizable, because the output elements are 
+independent of one another. This allows each thread to execute in parallel. 
+With the second calculation, output elements do rely on another, which would
+create dependencies between various threads and hinder parallelization. 
+For example, the thread computing y[4] would have to wait for the threads 
+computing y[3] and y[2] to finish before completing its task; the first 
+calculation does not run into such a problem.
+
+2.2
+---------------------
+A simple approximation is given by:
+
+y[n] = c * x[n] + (1 - c) * c * x[n - 1]
+
+This can be seen by writing out the recurrence as follows:
+
+y[1] = c * x[1] + (1 - c) * y[0]
+y[2] = c * x[2] + (1 - c) * y[1]
+     = c * x[2] + (1 - c) * (c * x[1] + (1 - c) * y[0])
+y[3] = c * x[3] + (1 - c) * y[2]
+     = c * x[3] + (1 - c) * (c * x[2] + (1 - c) * (c * x[1] + (1 - c) * y[0]))
+
+We can see that, since (1 - c) is close to 0, the terms including (1 - c) * (1 - c)
+will be negligible. Thus, we can exclude those to get our approxmation.
