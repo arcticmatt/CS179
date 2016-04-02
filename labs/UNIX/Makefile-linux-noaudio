@@ -2,7 +2,7 @@ CC = /usr/bin/g++
 
 LD_FLAGS = -lrt
 
-CUDA_PATH       ?= /usr/local/cuda-7.5
+CUDA_PATH       ?= /usr/local/cuda-6.5
 CUDA_INC_PATH   ?= $(CUDA_PATH)/include
 CUDA_BIN_PATH   ?= $(CUDA_PATH)/bin
 CUDA_LIB_PATH   ?= $(CUDA_PATH)/lib64
@@ -39,10 +39,10 @@ TARGETS = blur
 all: $(TARGETS)
 
 blur: blur_host.cpp blur.o
-  $(CC) $< -o $@ blur.o -O3 $(LDFLAGS) -Wall -I$(CUDA_INC_PATH)
+	$(CC) $< -o $@ blur.o -O3 $(LDFLAGS) -Wall -I$(CUDA_INC_PATH)
 
 blur.o: blur_device.cu
-  $(NVCC) $(NVCCFLAGS) -O3 $(EXTRA_NVCCFLAGS) $(GENCODE_FLAGS) -I$(CUDA_INC_PATH) -o $@ -c $<
+	$(NVCC) $(NVCCFLAGS) -O3 $(EXTRA_NVCCFLAGS) $(GENCODE_FLAGS) -I$(CUDA_INC_PATH) -o $@ -c $<
 
 
 clean:
