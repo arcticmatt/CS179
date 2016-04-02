@@ -27,14 +27,14 @@ const float PI = 3.14159265358979;
 
 
 float gaussian(float x, float mean, float std) {
-    return (1 / (std * sqrt(2 * PI))) 
+    return (1 / (std * sqrt(2 * PI)))
         * exp(-1.0 / 2.0 * pow((x - mean) / std, 2));
 }
 
 /*
- * NOTE: You can use this macro to easily check cuda error codes 
- * and get more information. 
- * 
+ * NOTE: You can use this macro to easily check cuda error codes
+ * and get more information.
+ *
  * Modified from:
  * http://stackoverflow.com/questions/14038589/
  *   what-is-the-canonical-way-to-check-for-errors-using-the-cuda-runtime-api
@@ -73,8 +73,8 @@ void check_args(int argc, char **argv) {
 /*
  * Reads in audio data (alternatively, generates random data), and convolves
  * each channel with the specified filtering function h[n], producing output
- * data. 
- * 
+ * data.
+ *
  * Uses both CPU and GPU implementations, and compares the results.
  */
 int large_gauss_test(int argc, char **argv) {
@@ -166,25 +166,29 @@ int large_gauss_test(int argc, char **argv) {
     // As we iterate through the audio channels (or trials), we'll store that
     // channel's data on the GPU here
     //
-    // TODO: Allocate memory on the GPU here. Note that the audio data comes in
+    // Allocate memory on the GPU here. Note that the audio data comes in
     // as floating-point values, the number of which is stored in N.
     float *dev_input_data;
+    gpuErrchk(cudaMalloc((void **) &dev_input_data, n_frames * sizeof(float)));
 
     // We have to store our impulse response on the GPU as well. (Fun fact:
     // Later in the class, we'll see that we can store small, often-used
     // quantities in special GPU memory regions. But for now, global memory will
     // do.)
     //
-    // TODO: Allocate memory on the GPU here. Size parameters are above.
+    // Allocate memory on the GPU here. Size parameters are above.
     //
-    // TODO: Since our impulse response will stay the same for all of
+    // Since our impulse response will stay the same for all of
     // the audio channels, we can copy over this data now as well.
     // Copy the impulse response from host memory to the GPU.
     float *dev_blur_v;
+    gpuErrchk(cudaMalloc((void **) &dev_blur_v, n_frames * sizeof(float)));
+    gpuErrchk(cudaMemcpy(dev_blur_v, blur_v, GAUSSIAN_SIZE * sizeof(float),
+            cudaMemcpyHostToDevice));
 
-    // TODO: Allocate memory on the GPU here to store the output  audio signal.
+    // Allocate memory on the GPU here to store the output audio signal.
     float *dev_out_data;
-
+    gpuErrchk(cudaMalloc((void **) &dev_out_data, n_frames * sizeof(float)));
 
     // Iterate through each audio channel (e.g. 2 iterations for  stereo files)
     for (int ch = 0; ch < n_channels; ch++) {
@@ -213,11 +217,11 @@ int large_gauss_test(int argc, char **argv) {
         {
             for (int i = 0; i < GAUSSIAN_SIZE; i++) {
                 for (int j = 0; j <= i; j++)
-                    output_data_host[i] += input_data[i - j] * blur_v[j]; 
+                    output_data_host[i] += input_data[i - j] * blur_v[j];
             }
             for (int i = GAUSSIAN_SIZE; i < n_frames; i++) {
                 for (int j = 0; j < GAUSSIAN_SIZE; j++)
-                    output_data_host[i] += input_data[i - j] * blur_v[j]; 
+                    output_data_host[i] += input_data[i - j] * blur_v[j];
             }
         }
 
@@ -242,9 +246,11 @@ int large_gauss_test(int argc, char **argv) {
         cudaEventRecord(start_gpu);
 
 
-        // TODO: Copy this channel's input data (stored in input_data) from host
+        // Copy this channel's input data (stored in input_data) from host
         // memory to the GPU
         //
+        gpuErrchk(cudaMemcpy(dev_input_data, input_data, n_frames * sizeof(float),
+                cudaMemcpyHostToDevice));
         // NOTE: This is a function in the blur_device.cu file, where you'll fill
         // in the kernel call
         cudaCallBlurKernel(blocks, local_size, dev_input_data, dev_blur_v,
@@ -259,10 +265,12 @@ int large_gauss_test(int argc, char **argv) {
             cerr << "No kernel error detected" << endl;
 
 
-        // TODO: Now that kernel calls have finished, copy the output signal
+        // Now that kernel calls have finished, copy the output signal
         // back from the GPU to host memory. (We store this channel's result
         // in output_data on the host.)
-        
+        gpuErrchk(cudaMemcpy(output_data, dev_out_data, n_frames * sizeof(float),
+                cudaMemcpyDeviceToHost));
+
 
         // Stop timer
         cudaEventRecord(stop_gpu);
@@ -275,7 +283,7 @@ int large_gauss_test(int argc, char **argv) {
         for (int i = 0; i < n_frames; i++) {
             if (fabs(output_data_host[i] - output_data[i]) < 1e-6) {
             #if 0
-                cout << "Correct output at index " << i << ": " << output_data_host[i] << ", " 
+                cout << "Correct output at index " << i << ": " << output_data_host[i] << ", "
                     << output_data[i] << endl;
             #endif
             }
@@ -312,8 +320,11 @@ int large_gauss_test(int argc, char **argv) {
     }
 
 
-    // TODO: Now that all channels have been processed, free all allocated
+    // Now that all channels have been processed, free all allocated
     // memory on the GPU.
+    cudaFree(dev_input_data);
+    cudaFree(dev_blur_v);
+    cudaFree(dev_out_data);
 
 
     // Free memory on host
@@ -331,7 +342,7 @@ int large_gauss_test(int argc, char **argv) {
         exit(EXIT_FAILURE);
     }
 
-    sf_write_float(out_file, all_channel_output, amt_read); 
+    sf_write_float(out_file, all_channel_output, amt_read);
     sf_close(in_file);
     sf_close(out_file);
 
