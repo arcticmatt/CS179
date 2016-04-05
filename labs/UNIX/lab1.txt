@@ -4,7 +4,7 @@ Assignment 1
 Due: Wednesday, April 6, 2015 - 3:00 PM
 
 Submission:
-Include your written answers in a README file. Submit these answers, as well as your code, by e-mail to kyuh@caltech.edu. Package your files in a standard archive format (e.g. zip, tar.gz, tar.bz2).
+Include your written answers in a README file. Submit these answers, as well as your code, by e-mail to cs179.ta@gmail.com. Package your files in a standard archive format (e.g. zip, tar.gz, tar.bz2).
 
 
 

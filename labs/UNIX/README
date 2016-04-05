@@ -59,7 +59,6 @@ void test5() {
         printf("Value is 0\n");
 }
 
-
 2.1
 ---------------------
 The first calculation is more parallelizable, because the output elements are 
