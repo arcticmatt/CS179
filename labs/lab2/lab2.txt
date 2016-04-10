@@ -135,7 +135,7 @@ valid way to get rid of a dependency!) but each iteration of the loop must still
 process 2 values of k.
 
 (e)
-Can you think of any other anything else you can do that might make this code
+Can you think of anything else you can do that might make this code
 run faster?
 
 
