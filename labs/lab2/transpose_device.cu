@@ -1,4 +1,5 @@
 #include <cassert>
+#include <stdio.h>
 #include <cuda_runtime.h>
 #include "transpose_device.cuh"
 
@@ -35,7 +36,7 @@
  */
 __global__
 void naiveTransposeKernel(const float *input, float *output, int n) {
-    // TODO: do not modify code, just comment on suboptimal accesses
+    // DONE: do not modify code, just comment on suboptimal accesses
 
     const int i = threadIdx.x + 64 * blockIdx.x;
     int j = 4 * threadIdx.y + 64 * blockIdx.y;
@@ -60,14 +61,45 @@ void shmemTransposeKernel(const float *input, float *output, int n) {
     // memory bank conflicts (0 bank conflicts should be possible using
     // padding). Again, comment on all sub-optimal accesses.
 
-    // __shared__ float data[???];
+    __shared__ float sh_in[64 * 64];
 
-    const int i = threadIdx.x + 64 * blockIdx.x;
-    int j = 4 * threadIdx.y + 64 * blockIdx.y;
-    const int end_j = j + 4;
+    const int i0 = threadIdx.x + 64 * blockIdx.x;
+    int j0 = 4 * threadIdx.y + 64 * blockIdx.y;
+    const int i1 = threadIdx.x;
+    int j1 = 4 * threadIdx.y;
+    const int end_j0 = j0 + 4;
 
-    for (; j < end_j; j++)
-        output[j + n * i] = input[i + n * j];
+    // Read in a 64 x 64 block from global memory into the 64 x 64 sized
+    // shared memory array.
+    for (; j0 < end_j0; j0++, j1++) {
+        assert (i0 % 64 == i1);
+        assert (j0 % 64 == j1);
+        sh_in[i1 + 64 * j1] = input[i0 + n * j0];
+    }
+
+    __syncthreads();
+
+    // Reassign variables, b/c we just incremented them.
+    j0 = 4 * threadIdx.y + 64 * blockIdx.y;
+    j1 = 4 * threadIdx.y;
+
+    // Write the memory in shared memory to the global output array.
+    // We access the shared memory in non-sequential order - this is not
+    // a problem for shared memory when trying to achieve optimal performance.
+    // Note that we access the output array in sequential order.
+    for (; j0 < end_j0; j0++, j1++) {
+        assert (i0 % 64 == i1);
+        assert (j0 % 64 == j1);
+        if (i1 == 0 && j1 == 63) {
+            printf("===== threadIdx.x = %d, threadIdx.y = %d =====\n", threadIdx.x, threadIdx.y);
+            printf("i0 = %d\n", i0);
+            printf("j0 = %d\n", j0);
+            printf("i1 = %d\n", i1);
+            printf("j1 = %d\n", j1);
+            printf("sh_in[%d] = %f, output[%d] = %f\n", j1 + 64 * i1, sh_in[j1 + 64 * i1], i0 + n * j0, output[i0 + n * j0]);
+        }
+        output[i0 + n * j0] = sh_in[j1 + 64 * i1];
+    }
 }
 
 __global__
