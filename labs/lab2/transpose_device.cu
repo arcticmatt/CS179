@@ -61,7 +61,8 @@ void shmemTransposeKernel(const float *input, float *output, int n) {
     // memory bank conflicts (0 bank conflicts should be possible using
     // padding). Again, comment on all sub-optimal accesses.
 
-    __shared__ float sh_in[64 * 64];
+    // 65 x 64 shared memory matrix.
+    __shared__ float sh_in[65 * 64];
 
     int i0 = threadIdx.x + 64 * blockIdx.x;
     int j0 = 4 * threadIdx.y + 64 * blockIdx.y;
@@ -69,16 +70,20 @@ void shmemTransposeKernel(const float *input, float *output, int n) {
     int j1 = 4 * threadIdx.y;
     int end_j0 = j0 + 4;
 
-    // Read in a 64 x 64 block from global memory into the 64 x 64 sized
-    // shared memory array.
+    // Read in a 64 x 64 chunk from global memory into the 65 x 64 sized
+    // shared memory array (padded to fix bank conflicts).
     for (; j0 < end_j0; j0++, j1++) {
-        sh_in[i1 + 64 * j1] = input[i0 + n * j0];
+        sh_in[i1 + 65 * j1] = input[i0 + n * j0];
     }
 
+    // Make sure the entire block has writen to shared memory.
     __syncthreads();
 
     // Flip the block indices for the global matrix indices, and reassign
-    // variables.
+    // variables. We do this because the transpose of some elements is not
+    // necessarily in the same block as the element itself.
+    // No need to switch threadIdx.x, threadIdx.y - this transpose
+    // happens in the last for-loop.
     i0 = threadIdx.x + 64 * blockIdx.y;
     j0 = 4 * threadIdx.y + 64 * blockIdx.x;
     j1 = 4 * threadIdx.y;
@@ -89,7 +94,7 @@ void shmemTransposeKernel(const float *input, float *output, int n) {
     // a problem for shared memory when trying to achieve optimal performance.
     // Note that we access the output array in sequential order.
     for (; j0 < end_j0; j0++, j1++) {
-        output[i0 + n * j0] = sh_in[j1 + 64 * i1];
+        output[i0 + n * j0] = sh_in[j1 + 65 * i1];
     }
 }
 
