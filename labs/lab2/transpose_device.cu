@@ -138,7 +138,7 @@ void shmemTransposeKernel(const float *input, float *output, int n) {
  */
 __global__
 void optimalTransposeKernel(const float *input, float *output, int n) {
-    // TODO: This should be based off of your shmemTransposeKernel.
+    // DONE: This should be based off of your shmemTransposeKernel.
     // Use any optimization tricks discussed so far to improve performance.
     // Consider ILP and loop unrolling.
 

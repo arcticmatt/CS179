@@ -61,16 +61,24 @@ output[i + 32 * j] = d1
 
 (c)
 d0 is dependent on a0, b0, and c0
+the write to output is dependent on d0
 
+the latter 5 instructions are dependent on the completion of the former 5
+    instructions
 d1 is dependent on a1, b1, and c1
+the write to output is dependent on d1
 
 (d)
 int i = threadIdx.x;
 int j = threadIdx.y;
 for (int k = 0; k < 128; k += 2) {
     float output = output[i + 32 * j];
-    output += lhs[i + 32 * k] * rhs[k + 128 * j];
-    output += lhs[i + 32 * (k + 1)] * rhs[(k + 1) + 128 * j];
+    float l1 = lhs[i + 32 * k];
+    float l2 = lhs[i + 32 * (k + 1)];
+    float r1 = rhs[k + 128 * j];
+    float r2 = rhs[(k + 1) + 128 * j];
+    output += l1 * r1;
+    output += l2 * r2;
     output[i + 32 * j] = output;
 }
 
