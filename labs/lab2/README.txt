@@ -98,6 +98,35 @@ of k within each iteration (e.g. 4, 8, etc.), or just completely unroll
 it and get rid of the for-loop (although this would look pretty bad and
 take up a lot of space).
 
+TRANSPOSE OUTPUT
+----------------
+Note - performance strategies can be found in the comments of the
+transpose_device.cu file.
+
+Size 512 naive CPU: 0.003712 ms
+Size 512 GPU memcpy: 0.034464 ms
+Size 512 naive GPU: 0.097920 ms
+Size 512 shmem GPU: 0.032800 ms
+Size 512 optimal GPU: 0.030944 ms
+
+Size 1024 naive CPU: 1.520096 ms
+Size 1024 GPU memcpy: 0.086080 ms
+Size 1024 naive GPU: 0.316800 ms
+Size 1024 shmem GPU: 0.095040 ms
+Size 1024 optimal GPU: 0.088704 ms
+
+Size 2048 naive CPU: 33.548481 ms
+Size 2048 GPU memcpy: 0.268288 ms
+Size 2048 naive GPU: 1.162272 ms
+Size 2048 shmem GPU: 0.321664 ms
+Size 2048 optimal GPU: 0.309056 ms
+
+Size 4096 naive CPU: 152.764771 ms
+Size 4096 GPU memcpy: 1.001376 ms
+Size 4096 naive GPU: 4.113920 ms
+Size 4096 shmem GPU: 1.250976 ms
+Size 4096 optimal GPU: 1.181280 ms
+
 BONUS (+5 points, maximum set score is 100 even with bonus)
 -----------------------------------------------------------
 - It requires two operations of order N as opposed to one (two for-loops).

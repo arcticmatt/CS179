@@ -4,7 +4,7 @@
 #include "transpose_device.cuh"
 
 /*
- * TODO for all kernels (including naive):
+ * DONE for all kernels (including naive):
  * Leave a comment above all non-coalesced memory accesses and bank conflicts.
  * Make it clear if the suboptimal access is a read or write. If an access is
  * non-coalesced, specify how many cache lines it touches, and if an access
