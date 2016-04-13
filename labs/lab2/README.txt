@@ -1,20 +1,21 @@
 Question 1.1: Latency Hiding
 ----------------------------
-It takes approximately 10 arithmetic instructions to hide the latency of a single
-arithmetic instruction on a GK110. This is because the latency for arithmetic
-instructions on a GK110 is ~10 ns, and the GPU clock is 1 GHz (1 clock/ns). If
-we have 10 arithmetic instructions, the GPU will be able to execute them all
-in parallel after a ~10 second delay, giving us a rate of ~1 instruction/clock
-cycle.
+It takes approximately 11 arithmetic instructions to hide the latency of a single
+arithmetic instruction on a GK110. We have that the latency for arithmetic
+instructions on a GK110 is ~10 ns, and the GPU clock is 1 GHz (1 clock/ns). We
+also have that a GK110 can start 8 instructions in a single clock cycle, since
+it can start instructions in 4 warps in each clock cycle and 2 instructions
+in each warp. Thus, if we have 11 instructions, 8 will be started at time 0
+(finishing at time 10) and 3 will be started at time 1 (finishing at time 11).
+This gives us an overall rate of ~1 instruction/clock cycle.
 
 Question 1.2: Thread Divergence
 -------------------------------
 (a)
-This code diverges because of the conditional statement. The conditional causes
-a difference in behavior in threads based on the calculated idx. Thus, since
-threads must run the same set of instructions at the same time, threads must
-execute the different instructions in serial. In other words, we get warp
-divergence.
+This code does not diverge. Since blockSize.y is 32, idx % 32 will equal
+threadIdx.y. Then, we know that threadIdx.y does not vary within a single
+warp. Thus, each warp will either execute foo() or bar(), and there will
+be no warp divergence.
 
 (b)
 This code does not diverge. Although each thread will execute a different number

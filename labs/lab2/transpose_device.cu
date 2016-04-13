@@ -44,11 +44,9 @@ void naiveTransposeKernel(const float *input, float *output, int n) {
 
     /*
      * The write here (output[j + n * i]) is non-coalesced, and touches
-     * 32 cache lines. This is because it accesses the output array
-     * in a non-contiguous manner. That is, the output array is stored in
-     * in column major order. However, within a single warp, we access via
-     * rows. These row accesses do not hit the memory in sequential
-     * order, causing multiple memory accesses to occur.
+     * 32 cache lines. This is because, within a single warp, it accesses the
+     * output array in a non-contiguous manner, causing multiple memory
+     * accesses to occur.
      */
     for (; j < end_j; j++)
         output[j + n * i] = input[i + n * j];
