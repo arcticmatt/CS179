@@ -97,3 +97,12 @@ We could unroll the for-loop even more. That is, we could handle more values
 of k within each iteration (e.g. 4, 8, etc.), or just completely unroll
 it and get rid of the for-loop (although this would look pretty bad and
 take up a lot of space).
+
+BONUS (+5 points, maximum set score is 100 even with bonus)
+-----------------------------------------------------------
+- It requires two operations of order N as opposed to one (two for-loops).
+- It requires an unnecessary loads since it writes an intermediate result to
+    a before computing the final answer. That is, there are four loads in
+    total (2 for each for-loop) as opposed to the 3 as seen in the faster
+    method.
+- Additional overhead of method calling, passing parameters (CDECL).

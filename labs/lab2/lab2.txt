@@ -236,9 +236,3 @@ for (int i = 0; i < n; i++)
     a[i] = x[i] + y[i] + z[i];
 
 List at least 2 ways (you don't need more than a sentence or two for each way).
-- It requires two operations of order N as opposed to one (two for-loops).
-- It requires an unnecessary loads since it writes an intermediate result to 
-    a before computing the final answer. That is, there are four loads in
-    total (2 for each for-loop) as opposed to the 3 as seen in the faster 
-    method.
-- Additional overhead of method calling, passing parameters.
