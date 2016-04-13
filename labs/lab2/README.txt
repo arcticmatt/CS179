@@ -1,13 +1,14 @@
 Question 1.1: Latency Hiding
 ----------------------------
-It takes approximately 11 arithmetic instructions to hide the latency of a single
+It takes ~80 arithmetic instructions to hide the latency of a single
 arithmetic instruction on a GK110. We have that the latency for arithmetic
 instructions on a GK110 is ~10 ns, and the GPU clock is 1 GHz (1 clock/ns). We
 also have that a GK110 can start 8 instructions in a single clock cycle, since
 it can start instructions in 4 warps in each clock cycle and 2 instructions
-in each warp. Thus, if we have 11 instructions, 8 will be started at time 0
-(finishing at time 10) and 3 will be started at time 1 (finishing at time 11).
-This gives us an overall rate of ~1 instruction/clock cycle.
+in each warp. Thus we will able to start 80 instructions in the latency time. 
+Then, after the first instruction starts executing, each subsequent time step 
+will have no "lag" since we issued the corresponding instructions during the 
+previous clock cycles.
 
 Question 1.2: Thread Divergence
 -------------------------------
