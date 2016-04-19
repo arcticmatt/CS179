@@ -54,7 +54,6 @@ cudaProdScaleKernel(const cufftComplex *raw_data, const cufftComplex *impulse_v,
 
     As in Assignment 1 and Week 1, remember to make your implementation
     resilient to varying numbers of threads.
-
     */
 
     // Get current thread's index.
@@ -82,7 +81,7 @@ void
 cudaMaximumKernel(cufftComplex *out_data, float *max_abs_val,
     int padded_length) {
 
-    /* TODO 2: Implement the maximum-finding and subsequent
+    /* DONE: Implement the maximum-finding and subsequent
     normalization (dividing by maximum).
 
     There are many ways to do this reduction, and some methods
@@ -106,35 +105,41 @@ cudaMaximumKernel(cufftComplex *out_data, float *max_abs_val,
     */
 
     // Size determined from third parameter in cudaCallMaximumKernel.
-    extern __shared__ float partial_outputs[];
+    extern __shared__ float sdata[];
 
     // Get current thread's index.
-    uint thread_index = blockIdx.x * blockDim.x + threadIdx.x;
+    uint tid = threadIdx.x;
+    // Halve number of blocks...
+    uint thread_index = blockIdx.x * (blockDim.x * 2) + threadIdx.x;
 
-    float thread_max = INT_MIN;
     while (thread_index < padded_length) {
-        // Find the maximum MAGNITUDE (take abs value) for this thread.
-        thread_max = max(thread_max, fabs(out_data[thread_index].x));
+        // Copy block's shared data.
+        // ... and replace single load with two loads and first max
+        // of the reduction.
+        sdata[tid] = max(fabs(out_data[thread_index].x),
+                fabs(out_data[thread_index + blockDim.x].x));
 
-        thread_index += blockDim.x * gridDim.x;
-    }
+        // Make sure all data is copied by syncing.
+        __syncthreads();
 
-    partial_outputs[threadIdx.x] = thread_max;
+        for (uint s = blockDim.x / 2; s > 0; s >>= 1) {
+            if (tid < s) {
+                sdata[tid] = max(sdata[tid], sdata[tid + s]);
+            }
 
-    // Make sure all threads in block finish before continuing.
-    __syncthreads();
-
-    // Use the first thread in the block to calculate the block's
-    // max.
-    if (threadIdx.x == 0) {
-        float block_max = INT_MIN;
-
-        for (uint thread_idx = 0; thread_idx < blockDim.x; ++thread_idx) {
-            block_max = max(block_max, partial_outputs[thread_idx]);
+            // Make sure all threads have finished coalescing the shared data.
+            // This is necessary because the next iteration of the for loop
+            // relies on this calculation.
+            __syncthreads();
         }
 
-        // Now we take the max with the output.
-        atomicMax(max_abs_val, block_max);
+        // Use the first thread in the block to calculate the block's
+        // max.
+        if (threadIdx.x == 0) {
+           atomicMax(max_abs_val, sdata[0]);
+        }
+
+        thread_index += (blockDim.x * 2) * gridDim.x;
     }
 }
 
