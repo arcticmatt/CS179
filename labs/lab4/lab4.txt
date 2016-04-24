@@ -7,8 +7,8 @@ Due: Wednesday, April 27, 2016 - 3:00 PM
 >>> CLARIFICATION <<<
 
 	- All of the code for this assignment is in one file, compiled entirely by nvcc. As of last check,
-	the Nvidia compiler doesn't support the full C++ standard and libraries, so if you want to add code 
-	(error checking, etc), stick to C. 
+	the Nvidia compiler doesn't support the full C++ standard and libraries, so if you want to add code
+	(error checking, etc), stick to C.
 	- If you would really like to use C++, you can modify the makefile from Assignment 3, and use a similar
 	code structure to that given in the previous assignments.
 
@@ -17,10 +17,10 @@ Due: Wednesday, April 27, 2016 - 3:00 PM
 
 
 
-Submission: 
+Submission:
 ------------------
 
-By e-mail to cs179.ta@gmail.com. Package your files in a standard archive format (e.g. zip, tar.gz, tar.bz2). 
+By e-mail to cs179.ta@gmail.com. Package your files in a standard archive format (e.g. zip, tar.gz, tar.bz2).
 Please also include your name in the title of your archive.
 
 
@@ -28,8 +28,8 @@ Please also include your name in the title of your archive.
 Resource usage:
 ------------------
 
-The coding question (Question 3, X-ray CT reconstruction) is a reasonably classic problem. 
-Please do not look up the solution code directly. (Feel free to look up general documentation, 
+The coding question (Question 3, X-ray CT reconstruction) is a reasonably classic problem.
+Please do not look up the solution code directly. (Feel free to look up general documentation,
 as well as general theoretical resources on CT reconstruction.)
 
 
@@ -37,8 +37,8 @@ as well as general theoretical resources on CT reconstruction.)
 Other notes:
 ------------------
 
-The material involved in this set is likely more difficult than in some previous sets. 
-If you feel that any concepts are unclear, please tell us. 
+The material involved in this set is likely more difficult than in some previous sets.
+If you feel that any concepts are unclear, please tell us.
 
 
 
@@ -47,21 +47,21 @@ Question 1: Parallel Breadth-First Search (BFS) (30 pts)
 --------------------------------------------------------
 --------------------------------------------------------
 
-On Monday, we discussed a variation of the breadth-first-search (BFS) problem, and showed how it can 
-easily parallelized on the GPU by replacing the queue with multiple arrays of state (the "frontier", 
+On Monday, we discussed a variation of the breadth-first-search (BFS) problem, and showed how it can
+easily parallelized on the GPU by replacing the queue with multiple arrays of state (the "frontier",
 "visited", and "cost" arrays, along with the compact adjacency list representation of our graph).
 
 
 1.1 	(10 pts)
 ---------------------
 
-We've spent much of the course discussing the different types of memory available (shared, constant, 
+We've spent much of the course discussing the different types of memory available (shared, constant,
 texture, etc), as well as good memory practices (coalesced reads/locality, avoiding bank conflicts, etc).
 
 Suppose we wanted to avoid the read-penalties of global memory, and wanted to use per-block shared memory
-to store the data we need, before we run our computations. Would doing this increase our performance? 
+to store the data we need, before we run our computations. Would doing this increase our performance?
 
-If so, how would you do it, and why would it increase performance?  
+If so, how would you do it, and why would it increase performance?
 If not, why not?
 
 (Be reasonably thorough; a few sentences is sufficient.)
@@ -71,8 +71,8 @@ If not, why not?
 1.2 	(10 pts)
 ---------------------
 
-As mentioned in class, we call our GPU-side kernel within a loop. Each kernel call solves BFS for 
-the next "layer" of vertices within our graph (depicted in Lecture 10, slides 16-17). 
+As mentioned in class, we call our GPU-side kernel within a loop. Each kernel call solves BFS for
+the next "layer" of vertices within our graph (depicted in Lecture 10, slides 16-17).
 
 
 From Lecture 10 (slides 22-24), this loop's pseudocode is:
@@ -85,7 +85,7 @@ This pseudocode essentially says we continually iterate over layers of the graph
 more vertices to check.)
 
 
-What is a good, parallelizable way to check whether "F is not all false" at each iteration? 
+What is a good, parallelizable way to check whether "F is not all false" at each iteration?
 
 (Hint: If we store "false" as 0, and "true" as 1 within the frontier array, what happens to the array's sum?)
 
@@ -95,8 +95,8 @@ What is a good, parallelizable way to check whether "F is not all false" at each
 ---------------------
 
 Can you think of another way to check whether "F is not all false"? What are the advantages and
-disadvantages of this approach? Under what circumstances (e.g. graph density vs sparsity) 
-would this approach perform better (and worse) than your suggestion in (1.2)? 
+disadvantages of this approach? Under what circumstances (e.g. graph density vs sparsity)
+would this approach perform better (and worse) than your suggestion in (1.2)?
 
 (Hint: In the GPU pseudocode, what part of the code has to be executed to set an element of F to true?
 Can you add some code there?)
@@ -115,21 +115,21 @@ Question 2: Algorithm compare/contrast: PET Reconstruction (10 pts)
 by Eklund, et al.)
 
 
-On Friday, we discussed how to reconstruct a "slice" of a 3-D object, using X-ray computed tomography 
-(X-ray CT). 
+On Friday, we discussed how to reconstruct a "slice" of a 3-D object, using X-ray computed tomography
+(X-ray CT).
 
 Recall that, to get this data, one sends X-ray radiation along an angle, and measures the radiation at
-the other side. After doing this for multiple angles, we then reconstruct the image using the method 
+the other side. After doing this for multiple angles, we then reconstruct the image using the method
 described in class (filtered backprojection).
 
 
-Another common medical imaging technique is positron emission tomography (PET). As with an X-ray CT, a 
+Another common medical imaging technique is positron emission tomography (PET). As with an X-ray CT, a
 detector measures radiation around the slice. However, here the radiation comes from within the patient's
 body (usually by injection of a radioactive sugar into the circulatory system, followed by positron-electron
 annihalation). Effectively, we now measure *emission* of radiation, instead of purely *transmission*.
 
-Since radioactive decay is a stochastic process, we gain our radiation measurements bit-by-bit, instead 
-of all at once. Instead of accumulating all measurements into a sinogram, a common method is to store a 
+Since radioactive decay is a stochastic process, we gain our radiation measurements bit-by-bit, instead
+of all at once. Instead of accumulating all measurements into a sinogram, a common method is to store a
 list of detected emissions over time ("list-mode format"), something like:
 
 
@@ -141,12 +141,12 @@ list of detected emissions over time ("list-mode format"), something like:
 
 
 Suppose we attempt to reconstruct our image using this data, utilizing the same physical principles as X-ray
-CT*, where each radiation measurement corresponds to measurement of the density function along all of the 
-pixels within that line. 
+CT*, where each radiation measurement corresponds to measurement of the density function along all of the
+pixels within that line.
 
-Notice that now there is no easy way to determine where the relevant measurement data lies for each pixel 
+Notice that now there is no easy way to determine where the relevant measurement data lies for each pixel
 that we're trying to reconstruct. So instead of parallelizing over pixels (as we did in class for X-ray CT),
-we now parallelize over the entries in our list - each measurement will add itself to all pixels along 
+we now parallelize over the entries in our list - each measurement will add itself to all pixels along
 its line.
 
 
@@ -157,13 +157,13 @@ How do you expect our GPU-accelerated PET reconstruction performance to compare 
 
 (Hint 1: Are there any atomically unsafe operations to be aware of?)
 
-(Hint 2: In X-ray CT reconstruction, we were able to use texture memory to cache sinogram reads. Does 
+(Hint 2: In X-ray CT reconstruction, we were able to use texture memory to cache sinogram reads. Does
 that change here?)
 
 
 
 
-(* In practice, people have found better algorithms, namely an expectation-maximization approach to forward 
+(* In practice, people have found better algorithms, namely an expectation-maximization approach to forward
 and back-projection - details in "List Mode PET Reconstruction" (Kovacs). )
 
 
@@ -188,10 +188,10 @@ Here, we implement this algorithm.
 3.1 	(25 pts)
 ---------------------
 
-We saw in class that ordinary backprojection would result in a blurry image, due to the averaging effect 
+We saw in class that ordinary backprojection would result in a blurry image, due to the averaging effect
 of measurements over multiple angles. Our solution was to use a high-pass filter over the sinogram data.
 
-For this assignment, we'll use a basic ramp filter, where the lowest frequency's amplitude is scaled by 0, 
+For this assignment, we'll use a basic ramp filter, where the lowest frequency's amplitude is scaled by 0,
 the highest is scaled by 1 (so preserved), and amplitudes in between are scaled linearly with the frequency.
 
 The DFT of a sinogram measurement on a given angle is structured such that the highest frequency data is
@@ -204,7 +204,7 @@ in the middle, and the amplitudes are symmetric around this point. *
 
 
 
-Note: If you don't use the R2C and C2R cuFFT modes (described below), you'll probably need a second kernel 
+Note: If you don't use the R2C and C2R cuFFT modes (described below), you'll probably need a second kernel
 to convert the complex number array to an array of floats.
 
 
@@ -224,7 +224,7 @@ But this is optional.)
 3.2 	(35 pts)
 ---------------------
 
-The "core" of our reconstruction is the backprojection algorithm, as described in lecture. 
+The "core" of our reconstruction is the backprojection algorithm, as described in lecture.
 
 
 *** To do: Implement the backprojection algorithm. (See the sections marked "TODO 2".)
@@ -261,9 +261,9 @@ Assignment Notes
 
 
 
-The CUDA code itself will work on any of the class machines. 
+The CUDA code itself will work on any of the class machines.
 
-However, the pre-processing and post-processing Python scripts (below) only work on Haru. You can 
+However, the pre-processing and post-processing Python scripts (below) only work on Haru. You can
 alternatively run them on your local machine after installing the correct Python dependencies.
 
 WINDOWS USERS: The easiest way to ensure your development computer can run the python files in this
@@ -286,17 +286,17 @@ Recommendation: A simple way to ensure you have these dependendies is to just in
 
 
 The xray_ct_recon program takes in a text file of space-delimited values corresponding to the sinogram,
-and outputs another text file of space-delimited values. 
+and outputs another text file of space-delimited values.
 
 To run:
 	./xray_ct_recon
-		( Input sinogram text file name ) 
-		( Width or height of original image, whichever is larger ) 
+		( Input sinogram text file name )
+		( Width or height of original image, whichever is larger )
 		( Number of angles in sinogram )
 		( threads per block )
 		( number of blocks )
 		( output filename )
-		
+
 To produce the input sinogram data for CT reconstruction program, we use a "simulated CT scanner" that
 does the forward Radon transform on an image - this works on images in the PNG format. To do this, run:
 
@@ -308,8 +308,8 @@ The "0_input_numerical.txt" file is the textual output of the image data.
 The "1_input_mpl_falsecolor.png" file is the rendering of the image with false color.
 The "2_input_mpl_grayscale.png" file is the rendering of the image with greyscale.
 The "3_sinogram_as_image.png" file is the sinogram in an image format.
-*The "4_sinogram_data.txt" file is the sinogram data as space-delimited text. This is the input to your program. 
-*The "5_recon_output.png" file is the reconstructed image. The output image of your program should resemble this image. Use this to check that your code works. 
+*The "4_sinogram_data.txt" file is the sinogram data as space-delimited text. This is the input to your program.
+*The "5_recon_output.png" file is the reconstructed image. The output image of your program should resemble this image. Use this to check that your code works.
 This script also prints out the dimensions of the input file and number of angles in the sinogram.
 These are the values you should use as arguments for your program. Otherwise, your reconstructed image will be incorrect.
 
@@ -326,7 +326,7 @@ Example sequence of commands to successfully run the cuda file and visualize out
 1. python preprocess.py Brain_slice.png 20
 ## Compile your code
 2. make
-## Run the cuda code with 7 ags: encoded image file, max(image width, image height), number of angles, 
+## Run the cuda code with 7 ags: encoded image file, max(image width, image height), number of angles,
 ##                               threads per block, number of blocks, outfile name
 3. ./xray_ct_recon Brain_slice_4_sinogram_data.txt 1122 10 512 60 encoded_output_image.txt
 ## Convert the output from the cuda code into an image

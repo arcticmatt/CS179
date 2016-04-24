@@ -1,0 +1,32 @@
+Question 1: Parallel Breadth-First Search
+-----------------------------------------
+-----------------------------------------
+1.1
+---------------------
+Using shared memory is not feasible for this approach. The reason is that
+the BFS algorithm requires accessing the global edge array (for the compact
+adjacency list). However, each vertex can index anywhere into this array. Thus,
+for each block, it is not a trivial task to find which parts of the global
+memory to read into shared memory. In other words, the global memory that is
+relevant for each block is scattered - it is not organized conveniently in
+a local fashion.
+
+1.2
+---------------------
+We could sum the elements of F in parallel (as seen in lecture 7). If the sum is
+0, F is all false. If the sum is greater than 0, F is not all false.
+
+1.3
+---------------------
+TODO: finish
+One method would be to add another parameter to the kernel call: a bool pointer,
+or bool *, with an initial value of false. Then, whenever we set an element of
+the frontier array to true, we would also set the value of the bool pointer to
+true. Finaly, instead of checking (F is not all false), we would just check
+whether the value of the output parameter is false. This works because if F is
+false for every vertex, it never gets set to true; else, it will get set
+to true at least once.
+
+Question 2: Algorithm compare/contrast: PET Reconstruction
+----------------------------------------------------------
+----------------------------------------------------------
