@@ -23,7 +23,6 @@ Modified by Jordan Bonilla and Matthew Cedeno (2016)
 #define PI 3.14159265358979
 #define EPSILON .0001
 
-
 /* Check errors on CUDA runtime functions */
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
@@ -57,18 +56,37 @@ void checkCUDAKernelError()
 
 }
 
+/*
+ * Hi-pass filter for sinogram frequencies. Highest frequencies are in the
+ * middle, lowest are at the sides.
+ */
 __global__
 void
-cudaFreqScaleKernel(cufftComplex *sinogram_data, const float ramp_slope,
-        const float ramp_intercept, const unsigned int sinogram_length) {
+cudaFreqScaleKernel(cufftComplex *sinogram_data, const unsigned int sinogram_width,
+        const unsigned int sinogram_length) {
     // Get current thread's index.
     unsigned int thread_index = blockIdx.x * blockDim.x + threadIdx.x;
 
+    // Relative distance w/in sinogram.
+    unsigned int relative;
+    // Scaling factor.
+    float sfactor;
+    const unsigned int half_width = sinogram_width / 2;
+
     while (thread_index < sinogram_length) {
-        // Perform the frequency scaling. Only scale the real component, since
-        // that is what we extract later.
-        sinogram_data[thread_index].x *=
-            ramp_slope * sinogram_data[thread_index].x + ramp_intercept;
+        // Calculate scaling factor. Scale by distance from the center, where
+        // the highest frequencies (in the center) are scaled by 1 and the
+        // lowest frequencies (at the sides) are scaled by 0.
+        relative = thread_index % sinogram_width;
+        if (relative < half_width) {
+            sfactor = (float) (relative) / half_width;
+        } else {
+            sfactor = (float) (sinogram_width - relative) / half_width;
+        }
+
+        // Perform the frequency scaling.
+        sinogram_data[thread_index].x *= sfactor;
+        sinogram_data[thread_index].y *= sfactor;
 
         // Update thread_index.
         thread_index += blockDim.x * gridDim.x;
@@ -78,14 +96,47 @@ cudaFreqScaleKernel(cufftComplex *sinogram_data, const float ramp_slope,
 void cudaCallFrequencyScaleKernel(const unsigned int blocks,
         const unsigned int threadsPerBlock,
         cufftComplex *sinogram_data,
-        const float ramp_slope,
-        const float ramp_intercept,
+        const unsigned int sinogram_width,
         const unsigned int sinogram_length) {
     /* Call the frequency scaling kernel. */
-    cudaFreqScaleKernel<<<blocks, threadsPerBlock>>>(sinogram_data, ramp_slope,
-            ramp_intercept, sinogram_length);
+    cudaFreqScaleKernel<<<blocks, threadsPerBlock>>>(sinogram_data,
+            sinogram_width, sinogram_length);
 }
 
+/*
+ * Extract real components of complex data into an array of floats.
+ */
+__global__
+void
+cudaExtractRealKernel(cufftComplex *sinogram_cmplx, float *sinogram_real,
+        const unsigned int sinogram_length) {
+    // Get current thread's index.
+    unsigned int thread_index = blockIdx.x * blockDim.x + threadIdx.x;
+
+    while (thread_index < sinogram_length) {
+        // Copy over real component.
+        sinogram_real[thread_index] = sinogram_cmplx[thread_index].x;
+
+        // Update thread_index.
+        thread_index += blockDim.x * gridDim.x;
+    }
+}
+
+void cudaCallExtractRealKernel(const unsigned int blocks,
+        const unsigned int threadsPerBlock,
+        cufftComplex *sinogram_cmplx,
+        float *sinogram_real,
+        const unsigned int sinogram_length) {
+    /* Call the extract real kernel. */
+    cudaExtractRealKernel<<<blocks, threadsPerBlock>>>(sinogram_cmplx,
+            sinogram_real, sinogram_length);
+}
+
+
+/*
+ * Backprojection kernel. Reconstruct the image given the passed-in
+ * sinogram data.
+ */
 __global__
 void
 cudaBackprojectKernel(float *output_data, const float *sinogram_data,
@@ -117,30 +168,30 @@ cudaBackprojectKernel(float *output_data, const float *sinogram_data,
         x_cent = x - width / 2;
         y_cent = -y + height / 2;
 
+        assert(output_data[thread_index] == 0);
         // Don't parallelize sinogram iteration.
         for (int i = 0; i < nAngles; i++) {
-            theta = 2 * PI * i / nAngles;
+            theta = PI * ((float) i / nAngles);
             // Handle edge cases. Handle float imprecision.
             if (fabs(theta) < EPSILON) {
                 d = x_cent;
-                sinogram_index = d;
             } else if (fabs(theta - (PI / 2.0)) < EPSILON) {
                 d = y_cent;
-                sinogram_index = d;
             } else {
                 m = -cosf(theta) / sinf(theta);
-                q = -1 / m;
+                q = -1.0 / m;
                 xi = (y_cent - m * x_cent) / (q - m);
                 yi = q * xi;
-                d = sqrt(xi * xi + yi * yi);
-                // Use absolute coordinates when indexing into output.
+                d = sqrtf(xi * xi + yi * yi);
+                // Check if the distance should be negative.
                 if ((q > 0 && xi < 0) || (q < 0 && xi > 0))
-                    sinogram_index = -d;
-                else
-                    sinogram_index = d;
+                    d *= -1.0;
             }
+            sinogram_index = d;
+            assert(abs(sinogram_index) <= sinogram_width / 2);
+            // Adjust index, needs to be btwn 0 and sinogram_width.
             sinogram_index += sinogram_width / 2;
-            output_data[y * width + x] +=
+            output_data[thread_index] +=
                 sinogram_data[i * sinogram_width + sinogram_index];
         }
 
@@ -247,7 +298,7 @@ int main(int argc, char** argv){
 
     /*********** Assignment starts here *********/
 
-    /* TODO: Allocate memory for all GPU storage above, copy input sinogram
+    /* DONE: Allocate memory for all GPU storage above, copy input sinogram
     over to dev_sinogram_cmplx. */
     const unsigned int sinogram_length = sinogram_width * nAngles;
     gpuErrchk(cudaMalloc((void **) &dev_sinogram_cmplx,
@@ -260,7 +311,7 @@ int main(int argc, char** argv){
                 cudaMemcpyHostToDevice));
 
 
-    /* TODO 1: Implement the high-pass filter:
+    /* DONE 1: Implement the high-pass filter:
         - Use cuFFT for the forward FFT
         - Create your own kernel for the frequency scaling.
         - Use cuFFT for the inverse FFT
@@ -270,55 +321,40 @@ int main(int argc, char** argv){
         Note: If you want to deal with real-to-complex and complex-to-real
         transforms in cuFFT, you'll have to slightly change our code above.
     */
+    // Make a plan for C2C.
     cufftHandle plan;
-    int batch = 1;
-    cufftPlan1d(&plan, sinogram_length, CUFFT_C2C, batch);
+    cufftPlan2d(&plan, nAngles, sinogram_width, CUFFT_C2C);
 
-    // Run forward DFT on the sinogram data (do this in-place).
-    // TODO: Should this be RDC?
-    cufftExecC2C(plan, dev_sinogram_cmplx, dev_sinogram_cmplx, CUFFT_FORWARD);
-
-    // Find min/max freq on CPU. TODO: complex part?
-    float min_freq = INT_MAX;
-    float max_freq = INT_MIN;
-    float freq;
-    for(int i = 0; i < nAngles * sinogram_width; i++){
-        freq = sinogram_host[i].x;
-        if (freq < min_freq)
-            min_freq = freq;
-        if (freq > max_freq)
-            max_freq = freq;
-    }
-
-    // Find slope/intercept of ramp scale.
-    const float ramp_slope = max_freq - min_freq;
-    const float ramp_intercept = ramp_slope * -min_freq;
+    // Run forward DFT on the sinogram data (do this in-place). Use C2C.
+    assert(cufftExecC2C(plan, dev_sinogram_cmplx, dev_sinogram_cmplx, CUFFT_FORWARD) == CUFFT_SUCCESS);
 
     // Frequency scaling.
     cudaCallFrequencyScaleKernel(nBlocks, threadsPerBlock, dev_sinogram_cmplx,
-            ramp_slope, ramp_intercept, sinogram_length);
+            sinogram_width, sinogram_length);
 
-    // Run inverse DFT on the sinogram data (do this in-place). Use C2R
-    // in order to extract floats to real components.
-    // TODO: symmetric input?
-    cufftExecC2R(plan, dev_sinogram_cmplx, dev_sinogram_float);
+    // Run inverse DFT on the sinogram data (do this in-place). Use C2C.
+    assert(cufftExecC2C(plan, dev_sinogram_cmplx, dev_sinogram_cmplx, CUFFT_INVERSE) == CUFFT_SUCCESS);
+
+    // Extract the real components to floats.
+    cudaCallExtractRealKernel(nBlocks, threadsPerBlock, dev_sinogram_cmplx,
+            dev_sinogram_float, sinogram_length);
 
 
-    /* TODO 2: Implement backprojection.
+    /* DONE 2: Implement backprojection.
         - Allocate memory for the output image.
         - Create your own kernel to accelerate backprojection.
         - Copy the reconstructed image back to output_host.
         - Free all remaining memory on the GPU.
     */
-    printf("About to do backprojection...\n");
+    // Allocate and clear memory.
     gpuErrchk(cudaMalloc((void **) &output_dev, size_result));
-    // TODO: initialize output_dev to all zeros?
-    printf("Memset device...\n");
     gpuErrchk(cudaMemset(output_dev, 0, size_result));
-    printf("Running backprojection kernel...\n");
+
+    // Backprojection.
     cudaCallBackprojectKernel(nBlocks, threadsPerBlock, output_dev,
             dev_sinogram_float, width, height, nAngles, sinogram_width);
-    printf("Copying device to host...\n");
+
+    // Copy reconstructed image back to output_host.
     gpuErrchk(cudaMemcpy(output_host, output_dev, size_result,
                 cudaMemcpyDeviceToHost));
 
