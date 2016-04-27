@@ -18,7 +18,6 @@ We could sum the elements of F in parallel (as seen in lecture 7). If the sum is
 
 1.3
 ---------------------
-TODO: finish
 One method would be to add another parameter to the kernel call: a bool pointer,
 or bool *, with an initial value of false. Then, whenever we set an element of
 the frontier array to true, we would also set the value of the bool pointer to
@@ -27,6 +26,26 @@ whether the value of the output parameter is false. This works because if F is
 false for every vertex, it never gets set to true; else, it will get set
 to true at least once.
 
+With a dense graph, the bool pointer gets accessed more in each call because
+there will be more connections, and thus more vertices in the frontier at
+each step. For a sparse graph, the bool pointer gets accessed less, for similar
+reasons. This method is slower than method 1.2 (if the sum in 1.2 has early
+stopping) for dense graphs, because we have to update the bool pointer
+O(|F|) times, whereas in method 1.2, we can early stop the sum as soon as we
+find an element in the array that is 1.
+
 Question 2: Algorithm compare/contrast: PET Reconstruction
 ----------------------------------------------------------
 ----------------------------------------------------------
+The PET Reconstruction has less room for parallelization, given that it
+stores its entries in a list instead of as an array of pixels. This storage
+format, in a naive approach, necessitates an sequential iteration through pixels
+for each entry update. Clearly, this is a loss of parallelism. Further, the PET
+Reconstruction introduces atomic calls to update the output for each pixel,
+because there can be overlap between different lines. That is, two lines can
+intersect and contain the same pixel. Thus, when updating that pixel, we must
+do so atomically. Lastly, we can't use texture memory, because the data is
+not organized in a coherent/sequential fashion. That is, since the data
+is stored as entries of lines, 2D caching is not applicable - at least not
+in a straightforward fashion. Because of all this, a GPU-accelerated PET
+reconstruction will be slower than that of a GPU accelerated X-ray CT.
