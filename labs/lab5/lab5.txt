@@ -1,0 +1,215 @@
+CS 179
+Problem Set 5
+Due Wednesday 5/4 @ 3PM
+Submit to cs179.ta@gmail.com in an archive format (zip, tgz, tar)
+
+Brief Summary
+--------------------------------------------------------------------------------
+For this set, we are going to train a logistic regression model to classify
+Yelp reviews as either a review of a restaurant or a review of a non-restaurant
+business. Out of all 1.5 million reviews, about 1 million reviews are of
+restaurants.
+
+
+Details about given code and data
+--------------------------------------------------------------------------------
+In this assignment, you will be working with Latent Semantic Analysis (LSA) data
+on a dataset of Yelp reviews. The concept of how to produce the LSA data from
+the Yelp reviews is outside of the scope of the course. We included a simplified
+explanation of LSA at the end of this file (Appendix A) for those of you who are
+interested. For this assignment, however, all you need to understand is that the
+LSA data is a mathematical representation of the reviews. The reviews are
+"summarized" into numerical vectors when we turn them into LSA data sets so that
+we can analyze a set of data that is otherwise not numerically analyzable.
+
+Generally speaking, LSA data sets only contain floating point values summarizing
+the contents of literal data. In this set however, the LSA data contain an extra
+binary column indicating whether or not the review was of a restaurant. The LSA
+file (1.1 GB) with the labels is available at
+
+Haru: /srv/cs179_set5_data/shuffled_lsa_labelled.txt
+CMS cluster: /cs/courses/cs179/public_html/2015_labs/set5_data/shuffled_lsa_labelled.txt
+
+Also in these directories, you can find the raw data that was used to generate the LSA file.
+
+Each row of the LSA file contains 51 floating point numbers (50 LSA
+components + 1 label at the end). The file has 1,569,264 rows. The value 1
+indicates that the review is of a restaurant and -1 indicates that the review is
+not of a restaurant.
+
+Compiling the given code base will generate an executable called classify. Run
+the classify program on an LSA file by passing the file name as an argument
+to the classify executable.
+
+
+What you need to do on the set
+--------------------------------------------------------------------------------
+You are going to train a logistic regression model using gradient descent on
+mini-batches of reviews.
+
+The loss function to minimize is
+
+(1 / N) * sum_{n=1}^N log(1 + exp(-y_n w^T x_n))
+
+where N is the total number of data points, y_n is the label of point n, x_n is
+the features of point n, and w is the weights vector.
+For our case, y_n is -1 or 1, x_n is a 50 component vector, and the weights are
+therefore also a 50 component vector
+When operating on mini-batches (which is what we're going to do), N = mini-batch
+size.
+
+One way to minimize this loss function is gradient descent.
+The gradient of the loss with respect to w is
+
+grad = (-1 / N) * sum_{n=1}^N (y_n * x_n) / (1 + exp(y_n w^T x_n)
+
+The update rule for gradient descent is
+
+w := w - step_size * grad
+
+where step_size is a scalar. If step_size is too large, the weights will
+oscillate, and if step_size is too small the procedure will run too slowly, so
+you'll want to experiment with different values of step_size (try different orders
+of magnitude, somewhere in 0.01 to 10 is a good guess).
+
+Given a set of weights and an input, the prediction is sign(w^T x). Note the
+loss and the gradient both contains y w^T x expressions. We want y and w^T x to have
+the same sign, and if they do have the same sign then y w^T x > 0.
+
+Beyond using logistic regression and gradient descent, it is generally up to you
+how you want to format your code. You can change function signatures if
+necessary.
+
+The weights should be randomly initialized with small Gaussian noise (see the
+gaussianFill function). Gaussian fill is actually deterministic for this set
+due to the seeding of the generator. This will make it easier to check results
+for correctness with other students.
+
+You must fill in the trainLogRegKernel function in classify_cuda.cu. One very
+approach to this kernel is to have each thread classify one point and compute
+the contribution to the gradient of that point. Be sure to consider that all
+points in a batch are meant to be computed using the same weights, so the weight
+updating shouldn't occur until all predictions & gradients are calculated.
+
+The "classify" function in classify.cc should be main driver of the program.
+After processing a batch, the batch number and either the value of the loss
+function over the batch or the error rate of the batch
+(misclassifications / batch_size) should be printed. These are both training
+set metric and do not determine how the model would perform on data outside
+of the training set, but this problem set is focussed on training so these
+numbers are appropriate to examine.
+
+Also, you need to use cudaMemcpyAsync and streams in order to further utilize
+the GPU. Your stream should follow a pattern of:
+
+    H->D => kernel => D->H
+
+This pattern is what would usually happen in a normal kernel but with streams
+you will have multiple instances of this pattern occurring at once. See lecture
+slides for more info.
+
+Use at least 2 sets of buffers so that you can perform multiple operations at
+once. This means you should have at least 2 device input and output buffers,
+2 host buffers to copy from (perhaps pinned for extra performance), and 2
+streams. At least 2 sets of everything is needed to run kernels and transfers
+in parallel.
+
+If you can, try benchmarking this code on a Kepler or Maxwell GPU because of a
+technology called "Hyper-Q" that facilitates overlapping data transfer and computing.
+Haru has older, Fermi GPUs so unfortunately does not have Hyper_Q. 
+
+
+Performance numbers you should expect
+--------------------------------------------------------------------------------
+The solution code takes about 30s to run on a normal Kepler GPU. Notably, it also takes
+about 30s just to read and decode the full CSV file. This is 30MB/s of
+throughput. With the runtime so dominated by IO and parsing, writing a highly
+efficient CUDA kernel cannot have much of an impact on runtime. This task of
+training a logistic regression on streaming data is a good example of a task
+without enough computational density to be an excellent fit for GPUs.
+
+With mini-batch size of 2048, the reference code gets about 250
+misclassifications per mini-batch. This is about 12% error.
+The loss function is ~0.35 over each mini-batch (but has relatively high
+variance).
+
+
+Analysis you should perform
+--------------------------------------------------------------------------------
+Write all analysis in README.txt.
+
+How much does IO and parsing dominate your runtime? Compute this by commenting
+out all of the CUDA code and just running the loop over all of the data. You
+might have to use the data somehow (like writing it to a buffer with
+readLSAReview) to prevent the compiler from optimizing out your loop. Once you
+have program runtime with logistic regression and program runtime just from
+IO and parsing, you can compute the fraction of the time spent doing IO and
+parsing.
+
+What is the latency and throughput of your kernel for different batch sizes?
+For batch sizes 1, 32, 1024, 2048, 16384, and 65536 record the amount of time
+it takes your kernel to run (the latency) and compute the throughput
+(batch_size / latency). You should only measure the latency of the kernel
+itself, not the copying of data onto and off of the device.
+
+
+Appendix A. Yelp, Clustering and Latent Semantic Analysis (LSA)
+--------------------------------------------------------------------------------
+Yelp is a website where users can leave reviews of restaurants, doctors, car
+shops, and all kinds of other businesses. Yelp has released a great dataset that
+we're going to explore on this set: http://www.yelp.com/dataset_challenge .
+This dataset contains ~1.5 million reviews of ~61,000 businesses.
+
+Clustering is the process of dividing data into groups with similar
+characteristics. As the idea of clustering is best presented visually, see
+http://en.wikipedia.org/wiki/Cluster_analysis for many great diagrams.
+
+The most common clustering algorithm is called k-means clustering and involves
+randomly initializing k "cluster centers" and then iteratively mapping each
+point to the closest cluster center, updating the "cluster center" location
+to be the average of cluster's points. This requires many locations to converge
+and does not find a global optima. Additionally, the user must specify k, the
+number of clusters.
+
+Streaming algorithms are algorithms that see each data point only once and use
+only a fixed amount of memory. Streaming algorithms are very useful when
+processing large datasets or when processing high throughput streams of data
+(such as high frequency sensor data or the Twitter firehose). Streaming
+algorithms are also very important for low latency applications (because
+otherwise you would need to do some batch processing for each incoming data
+point).
+
+k-means clustering is not a streaming algorithm because it requires many
+iterations to converge. There are quite a few different schemes to approximate
+the k-means algorithm over streaming data sets. One popular option is to
+perform "sloppy k-means" with only a single pass over the dataset and with a
+greater value of k than is actually wanted. Sloppy k-means consists of mapping
+each point to a cluster and then updating the cluster location for the point.
+This can be performed on a single point or a batch of points at a time.
+Let q be the number of clusters for the sloppy online algorithm and k be the
+actual desired number of clusters. For big data applications where the total
+number of data points is known (and = n), q ~= k log(n). One can compute the
+final desired clustering by clustering the q "sloppy clusters", and the cluster
+of each point can be determined by maintaining a mapping from data point ->
+sloppy cluster -> real cluster.
+
+Analyzing textual content (such as Yelp reviews) is difficult because there is
+not an obvious way to compute the similarity between two snippets of text
+(called documents). Many methods rely on mapping documents to vectors. One
+common and easy way to map text to vectors is called "bag of words" (BOW). For
+a given document, the BOW is a vector where each component contains the number
+of occurences for a fixed word. For instance, if the first component refers to
+the word "cat" and a document contains "cat" 10 times, then the first component
+of the BOW vector is 10. The number of words in a collections of documents is
+often huge (~300,000 for the Yelp reviews) and a single document generally
+contains only a very small fraction of the full set of words. This means BOW
+vectors are often sparse (have very few non-zero components). BOW leads to the
+"term-document" matrix which is a matrix where element (i, j) contains the
+number of times the ith document contains the jth word.
+
+There are more useful vector representations of documents than BOW. One of these
+representations is called latent semantic analysis (LSA). LSA works by computing
+the low-rank approximation of the term-document matrix through SVD. We can
+compute a fixed rank approximation, so each LSA vector has a fixed size of our
+choosing. This vector corresponds to the coefficients that go with the
+corresponding left and right singular vectors.
