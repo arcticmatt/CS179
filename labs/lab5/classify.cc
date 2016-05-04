@@ -132,9 +132,6 @@ void classify(istream& in_stream, int batch_size) {
         // Check if full batch. If so, run kernel.
         if (review_idx == batch_size - 1) {
             review_idx = -1;
-            //for (int i = 0; i < batch_size; i++) {
-                //printf("data_host[%d] = %f\n", i, data_host[i]);
-            //}
             // Host to device.
             gpuErrChk(cudaMemcpyAsync(data_dev, data_host, size_data,
                         cudaMemcpyHostToDevice, s[stream_flag]));
@@ -142,12 +139,19 @@ void classify(istream& in_stream, int batch_size) {
             // Needed so that weights get updated batch-wise.
             gpuErrChk(cudaStreamSynchronize(s[stream_flag ^ 1]));
             // Run kernel.
-            float error = cudaClassify(data_dev, batch_size, STEP_SIZE,
-                    weights_dev, s[stream_flag]);
-            printf("Error = %f\n", error);
+            //float error = cudaClassify(data_dev, batch_size, STEP_SIZE,
+                    //weights_dev, s[stream_flag]);
+            //printf("Error = %f\n", error);
+            printf("Error = %f\n", 0.0);
             // Change streams.
             stream_flag ^= 1;
         }
+    }
+
+    // Synchronize and destroy streams.
+    for (int i = 0; i < 2; i++) {
+        cudaStreamSynchronize(s[i]);
+        cudaStreamDestroy(s[i]);
     }
 
     // Copy device weights to host.
@@ -156,10 +160,6 @@ void classify(istream& in_stream, int batch_size) {
     for (int i = 0; i < REVIEW_DIM; i++) {
         printf("Weight #%d = %f\n", i, weights_host[i]);
     }
-
-    // Destroy streams.
-    cudaStreamDestroy(s[0]);
-    cudaStreamDestroy(s[1]);
 
     // Free memory on host and device.
     free(weights_host);
@@ -188,7 +188,7 @@ int main(int argc, char** argv) {
     // Init timing
 	float time_initial, time_final;
 
-    int batch_size = 2048;
+    int batch_size = 32;
 
 	// begin timer
 	time_initial = clock();

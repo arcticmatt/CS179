@@ -31,6 +31,12 @@ void trainLogRegKernel(
     float *sdata_weights = sdata;
     float *sdata_grad = sdata + REVIEW_DIM;
 
+    // Num misclassified, per block.
+    __shared__ float num_misclassified[1];
+    if (threadIdx.x == 0) {
+        num_misclassified[0] = 0;
+    }
+
     // Use index within the block to populate shared memory.
     unsigned int block_index = threadIdx.x;
 
@@ -54,25 +60,25 @@ void trainLogRegKernel(
         // (y_n * x_n) / (1 + exp(y_n w^T x_n)
 
         // Pointer to the features of the current point.
-        float *curr_data = data + (thread_index * (REVIEW_DIM + 1));
+        int curr_index = thread_index * (REVIEW_DIM + 1);
         float dot_prod = 0;
-        float y_val = curr_data[REVIEW_DIM];
+        float y_val = data[curr_index + REVIEW_DIM];
 
         // Calculate dot product.
         for (int i = 0; i < REVIEW_DIM; i++) {
-            dot_prod += sdata_weights[i] * curr_data[i];
+            dot_prod += sdata_weights[i] * data[curr_index + i];
         }
 
         // Check for misclassified points.
         bool sign_dot_prod = dot_prod > 0 ? true : false;
         bool sign_y_val = y_val > 0 ? true : false;
         if (sign_dot_prod != sign_y_val) {
-            atomicAdd(errors, 1);
+            atomicAdd(num_misclassified, 1.0);
         }
 
         // Update gradient.
         for (int i = 0; i < REVIEW_DIM; i++) {
-            float grad_update = (y_val * curr_data[i]) / (1.0 + exp(y_val * dot_prod));
+            float grad_update = (y_val * data[curr_index + i]) / (1.0 + exp(y_val * dot_prod));
             atomicAdd(&sdata_grad[i], grad_update);
         }
 
@@ -89,10 +95,9 @@ void trainLogRegKernel(
             // the update to an addition.
             atomicAdd(&weights[i], step_size * sdata_grad[i] * (1.0 / batch_size));
         }
-    }
 
-    if (original_thread_index == 0) {
-        *errors /= (float) batch_size;
+        // Add each block's error contribution to the global error.
+        atomicAdd(errors, *num_misclassified / (float) batch_size);
     }
 }
 
@@ -109,8 +114,6 @@ float cudaClassify(
     cudaStream_t stream)
 {
     int block_size = (batch_size < 1024) ? batch_size : 1024;
-
-    // grid_size = CEIL(batch_size / block_size)
     int grid_size = (batch_size + block_size - 1) / block_size;
     int shmem_bytes = (REVIEW_DIM * 2) * sizeof(float);
 
