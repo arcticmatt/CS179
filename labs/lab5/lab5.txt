@@ -116,7 +116,7 @@ in parallel.
 
 If you can, try benchmarking this code on a Kepler or Maxwell GPU because of a
 technology called "Hyper-Q" that facilitates overlapping data transfer and computing.
-Haru has older, Fermi GPUs so unfortunately does not have Hyper_Q. 
+Haru has older, Fermi GPUs so unfortunately does not have Hyper_Q.
 
 
 Performance numbers you should expect
