@@ -17,7 +17,9 @@ Note: measure latency by commenting out only the kernel.
 
 1
 with kernel: doesn’t finish
-without kernel: doesn’t finish
+without kernel: Total time to run classify: 33.802284 (s)
+latency: N/A
+throughput: N/A
 
 32
 with kernel: Total time to run classify: 28.812044 (s)
