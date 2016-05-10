@@ -1,0 +1,117 @@
+CS 179: GPU Computing
+Assignment 7
+
+Due: Friday, May 13, 2016 - 11:59 PM
+
+
+Submission: 
+------------------
+
+By e-mail to cs179.ta@gmail.com. Make sure you get a confirmation email.
+Package your files in a standard archive format (e.g. zip, tar.gz, tar.bz2). 
+Please also include your name in the title of your archive.
+
+
+Question 1: 1-D Wave PDE 			(30 pts)
+---------------------------------------------
+---------------------------------------------
+
+
+Many scientific problems exhibit a wave-like nature, the behavior of which can be determined by solving various forms of the wave equation. In this problem, we'll numerically solve the 1-dimensional wave equation, a second-order PDE.
+
+In class, we showed that we can get a discrete solution by iteratively calculating values of the function at time t+1 in terms of data at time t, and t-1. (We also discussed how to keep things efficient memory-transfer wise.)
+
+
+1.1 	Single-GPU implementation (15 pts)
+--------------------------
+
+Implement the single-GPU wave equation solver by filling out the TODOs in the CUDA1DFDWave_* files.
+
+
+
+
+1.2 	Multi-GPU implementation (15 pts)
+--------------------------
+
+Modify the above code to use multiple GPUs on a single machine. 
+
+Would recommend getting the single-GPU version to work first, and keeping a backup before you start this part.
+
+This part (multi-GPU code) will only work on a system with multiple GPUs like Haru (3).
+
+
+Other notes
+--------------------------
+
+You can visualize the numerical data by either using the attached script (python makePlots.py), or by using Excel, Matplotlib, or similar software. You can also write verification to check that the GPU output matches the CPU output.
+
+
+
+
+Question 2: Gillespie simulation 	(70 pts)
+---------------------------------------------
+---------------------------------------------
+
+
+2.1 	Gillespie timestep implementation (25 pts)
+-------------------------------
+
+The Gillespie simulation simulates a stochastic system with memoryless transition events.  The process considers that at any point in time, all possible transitions are separate Poisson processes.  This allows us to easily calculate the probability distribution of the next event, and the probabilities of that event being each of the possible transitions.
+
+To perform the simulation, we assign a propensity to each possible transition, which corresponds to the rate parameter of the probability distribution of that item.  The probability density function of the minimum of these random variables is just an exponential distribution with a rate parameter equal to the sum of the propensities.  The probability of any transition being the next one is proportional to its propensity.
+
+So, at each iteration of the algorithm, we sample a timestep from an exponential distribution with rate parameter equal to the sum of the propensities, and choose a transition randomly, where the probability of any transition being chosen is proportional to its propensity.  An exponential distribution can be created by taking -ln(x)/lambda, where x is uniformly distributed from 0 to 1, and lambda is the desired rate constant of the exponential distribution.
+
+In this problem we will simulate a reaction where a chemical is produced by a system that toggles on and off, and decays with a rate proportional to its concentration
+     Kon    b     g
+OFF <--> ON --> X --> 0
+     Koff
+
+We can write the propensities of each possible transition
+
+While production is inactive
+OFF -> ON   Kon
+[X]--       [X] * g
+
+While production is active
+ON -> OFF   Koff
+[X]++       b
+[X]--       [X] * g
+
+In this analysis we will initialize the concentration to 0, start the system off, and use the values
+b=10
+g=1
+Kon = 0.1
+Koff = 0.9
+
+
+In order to examine the macroscale behavior of this system, we will use the Monte Carlo method, and simulate the random dynamics of the system enough times to obtain reasonable numeric results.
+
+** To do: Implement a cuda kernel to perform a single iteration of the Gillespie algorithm on the given system using an array of random numbers given as an argument.  Generate random numbers using cuRand before calling the kernel, and pass the random numbers as an argument.
+
+
+
+2.2 	Data resampling and stopping condition (25 pts)
+-------------------------------
+
+A downside to the Gillespie algorithm is that samples are not given in evenly spaced timesteps, but rather at varying intervals based on the distribution of times until a transition.  The data must be resampled at a uniform interval in order to perform more calculations.  A simple way to approximate this is, for each time point we want to sample, the concentration at the first known point afterwards is stored.
+
+For this problem, a reasonable set of timesteps would be to have 1000 points evenly spaced from 0 to 100.
+
+The iterations must be continued until each of the seperate simulations have reached a point greater than the final time point that must be sampled.  A reduction can be used to find the progress of the slowest simulation, and stop the program once it has progressed passed the region of interest
+
+** To Do: Implement a cuda kernel to, after each iteration of the Gillespie algorithm, update the values in an array of uniformly spaced samples.  Implement a reduction to detect the progress of the slowest simulation, and stop running iterations once it has passed the final timepoint.
+
+
+
+2.3 	Calculation of system behavior (20 pts)
+--------------------------------
+
+We can now use these values at the sample points to calculate the expected behavior of the system.  We can use reductions to combine the results from each separate simulation into more useful values.
+
+Two important measures of behavior are mean and variance.  The mean is the equal to the expected value of a random variable, and is estimated in our Monte Carlo simulation by summing the values for each different simulation and dividing by the number of simulations.  The variance is the expected squared difference between the variable and its mean.  This can be calculated by summing the squared differences, and dividing by the total number of simulations.
+
+** To Do: Implement a cuda kernel(s) to calculate the expected concentration and variance of the concentration at each timepoint.  
+
+
+
