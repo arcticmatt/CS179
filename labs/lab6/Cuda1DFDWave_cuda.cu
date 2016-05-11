@@ -19,13 +19,16 @@ cudaWaveSolverKernel(const float *old_displacements,
                      const float *current_displacements,
                      float *new_displacements,
                      const unsigned int numberOfNodes,
-                     const float courant) {
+                     const float courant,
+                     const float left_boundary_value) {
     // Get current thread's index.
     unsigned int thread_index = blockIdx.x * blockDim.x + threadIdx.x;
     const float courantSquared = courant * courant;
 
-    // Skip the first element (left boundary condition).
-    while (thread_index < 1) {
+    // Skip the first element (left boundary condition) and set the
+    // left boundary value.
+    if (thread_index == 0) {
+        new_displacements[thread_index] = left_boundary_value;
         thread_index += blockDim.x * gridDim.x;
     }
 
@@ -40,6 +43,11 @@ cudaWaveSolverKernel(const float *old_displacements,
         // Update thread_index.
         thread_index += blockDim.x * gridDim.x;
     }
+
+    // Set right boundary value.
+    if (thread_index == numberOfNodes - 1) {
+        new_displacements[thread_index] = 0;
+    }
 }
 
 /*
@@ -51,8 +59,9 @@ void cudaCallWaveSolverKernel(const unsigned int blocks,
                               const float *current_displacements,
                               float *new_displacements,
                               const unsigned int numberOfNodes,
-                              const float courant) {
+                              const float courant,
+                              const float left_boundary_value) {
     cudaWaveSolverKernel<<<blocks, threadsPerBlock>>>(old_displacements,
-            current_displacements, new_displacements, numberOfNodes,
-            courant);
+            current_displacements, new_displacements, numberOfNodes, courant,
+            left_boundary_value);
 }

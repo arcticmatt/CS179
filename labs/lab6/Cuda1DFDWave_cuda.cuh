@@ -12,6 +12,7 @@ void cudaCallWaveSolverKernel(const unsigned int blocks,
                               const float *current_displacements,
                               float *new_displacements,
                               const unsigned int numberOfNodes,
-                              const float courant);
+                              const float courant,
+                              const float left_boundary_value);
 
 #endif // CUDA_1D_FD_WAVE_CUDA_CUH

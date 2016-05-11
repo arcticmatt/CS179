@@ -182,20 +182,6 @@ int main(int argc, char* argv[]) {
         }
 
 
-        /* TODO: Call a kernel to solve the problem (you'll need to make
-        the kernel in the .cu file) */
-        // Create pointers to old, current, and new displacements.
-        float *old_displacements_dev = data_dev +
-            ((timestepIndex - 1) % 3) * numberOfNodes;
-        float *current_displacements_dev = data_dev +
-            ((timestepIndex + 0) % 3) * numberOfNodes;
-        float *new_displacements_dev = data_dev +
-            ((timestepIndex + 1) % 3) * numberOfNodes;
-        // Call the kernel.
-        cudaCallWaveSolverKernel(blocks, threadsPerBlock, old_displacements_dev,
-                current_displacements_dev, new_displacements_dev,
-                numberOfNodes, courant);
-
         //if (timestepIndex % 1 == 0) {
             //printf("old = %p\n", old_displacements_dev);
             //printf("current = %p\n", current_displacements_dev);
@@ -211,17 +197,19 @@ int main(int argc, char* argv[]) {
             left_boundary_value = 0;
         }
 
-
-        /* TODO: Apply left and right boundary conditions on the GPU.
-        The right boundary conditon will be 0 at the last position
-        for all times t */
-        // Apply left boundary value.
-        gpuErrchk(cudaMemset(new_displacements_dev, left_boundary_value,
-                    sizeof(float)));
-        // Apply right boundary value, which will always be 0.
-        gpuErrchk(cudaMemset(new_displacements_dev + numberOfNodes - 1, 0,
-                    sizeof(float)));
-
+        /* TODO: Call a kernel to solve the problem (you'll need to make
+        the kernel in the .cu file) */
+        // Create pointers to old, current, and new displacements.
+        float *old_displacements_dev = data_dev +
+            ((timestepIndex - 1) % 3) * numberOfNodes;
+        float *current_displacements_dev = data_dev +
+            ((timestepIndex + 0) % 3) * numberOfNodes;
+        float *new_displacements_dev = data_dev +
+            ((timestepIndex + 1) % 3) * numberOfNodes;
+        // Call the kernel, which sets the boundary values.
+        cudaCallWaveSolverKernel(blocks, threadsPerBlock, old_displacements_dev,
+                current_displacements_dev, new_displacements_dev,
+                numberOfNodes, courant, left_boundary_value);
 
         // Check if we need to write a file
         if (CUDATEST_WRITE_ENABLED == true && numberOfOutputFiles > 0 &&
