@@ -34,9 +34,6 @@ int main(int argc, char* argv[]) {
   // Please leave these enabled as a courtesy to your fellow classmates
   // if you are using a shared computer. You may ignore or remove these
   // functions if you are running on your local machine.
-  TA_Utilities::select_least_utilized_GPU();
-  int max_time_allowed_in_seconds = 40;
-  TA_Utilities::enforce_time_limit(max_time_allowed_in_seconds);
 
   if (argc < 3){
       printf("Usage: (threads per block) (max number of blocks)\n");
@@ -253,7 +250,7 @@ int main(int argc, char* argv[]) {
 
 
     /* TODO: Clean up GPU memory */
-    free(data_dev);
+    cudaFree(data_dev);
 }
 
   printf("You can now turn the output files into pictures by running "
