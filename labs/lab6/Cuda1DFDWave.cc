@@ -16,8 +16,16 @@
 #include "Cuda1DFDWave_cuda.cuh"
 #include "ta_utilities.hpp"
 
-
-
+/* Check errors on CUDA runtime functions */
+#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
+inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
+{
+    if (code != cudaSuccess)
+    {
+        fprintf(stderr,"GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
+        exit(code);
+    }
+}
 
 
 int main(int argc, char* argv[]) {
@@ -34,7 +42,7 @@ int main(int argc, char* argv[]) {
       printf("Usage: (threads per block) (max number of blocks)\n");
       exit(-1);
   }
-  
+
 
   // make sure output directory exists
   std::ifstream test("output");
@@ -42,14 +50,14 @@ int main(int argc, char* argv[]) {
     printf("Cannot find output directory, please make it (\"mkdir output\")\n");
     exit(1);
   }
-  
+
   /* Additional parameters for the assignment */
-  
+
   const bool CUDATEST_WRITE_ENABLED = true;   //enable writing files
   const unsigned int threadsPerBlock = atoi(argv[1]);
   const unsigned int maxBlocks = atoi(argv[2]);
-  
-  
+
+
 
   // Parameters regarding our simulation
   const size_t numberOfIntervals = 1e5;
@@ -85,7 +93,7 @@ int main(int argc, char* argv[]) {
   for (size_t timestepIndex = 0; timestepIndex < numberOfTimesteps;
        ++timestepIndex) {
     if (timestepIndex % (numberOfTimesteps / 10) == 0) {
-      printf("Processing timestep %8zu (%5.1f%%)\n",
+      printf("CPU: Processing timestep %8zu (%5.1f%%)\n",
              timestepIndex, 100 * timestepIndex / float(numberOfTimesteps));
     }
 
@@ -93,12 +101,12 @@ int main(int argc, char* argv[]) {
     const float * oldDisplacements =     data[(timestepIndex - 1) % 3];
     const float * currentDisplacements = data[(timestepIndex + 0) % 3];
     float * newDisplacements =           data[(timestepIndex + 1) % 3];
-    
+
     for (unsigned int a = 1; a <= numberOfNodes - 2; ++a){
-        newDisplacements[a] = 
+        newDisplacements[a] =
                 2*currentDisplacements[a] - oldDisplacements[a]
                 + courantSquared * (currentDisplacements[a+1]
-                        - 2*currentDisplacements[a] 
+                        - 2*currentDisplacements[a]
                         + currentDisplacements[a-1]);
     }
 
@@ -144,38 +152,59 @@ int main(int argc, char* argv[]) {
       fclose(file);
     }
   }
-  
+
 
 
   /************************* GPU Implementation *****************************/
 
   {
-  
-  
+
+
     const unsigned int blocks = std::min(maxBlocks, (unsigned int) ceil(
                 numberOfNodes/float(threadsPerBlock)));
-  
+
     //Space on the CPU to copy file data back from GPU
     float *file_output = new float[numberOfNodes];
 
-    /* TODO: Create GPU memory for your calculations. 
+    /* TODO: Create GPU memory for your calculations.
     As an initial condition at time 0, zero out your memory as well. */
-    
-    
+    int data_length = numberOfNodes * 3;
+    float *data_dev;
+    printf("data_dev = %p\n", data_dev);
+    gpuErrchk(cudaMalloc((void **) &data_dev, data_length * sizeof(float)));
+    printf("data_dev = %p\n", data_dev);
+    gpuErrchk(cudaMemset(data_dev, 0, data_length * sizeof(float)));
+
     // Looping through all times t = 0, ..., t_max
     for (size_t timestepIndex = 0; timestepIndex < numberOfTimesteps;
             ++timestepIndex) {
-        
+
         if (timestepIndex % (numberOfTimesteps / 10) == 0) {
-            printf("Processing timestep %8zu (%5.1f%%)\n",
+            printf("GPU: Processing timestep %8zu (%5.1f%%)\n",
                  timestepIndex, 100 * timestepIndex / float(numberOfTimesteps));
         }
-        
-        
+
+
         /* TODO: Call a kernel to solve the problem (you'll need to make
         the kernel in the .cu file) */
+        // Create pointers to old, current, and new displacements.
+        float *old_displacements_dev = data_dev +
+            ((timestepIndex - 1) % 3) * numberOfNodes;
+        float *current_displacements_dev = data_dev +
+            ((timestepIndex + 0) % 3) * numberOfNodes;
+        float *new_displacements_dev = data_dev +
+            ((timestepIndex + 1) % 3) * numberOfNodes;
+        // Call the kernel.
+        cudaCallWaveSolverKernel(blocks, threadsPerBlock, old_displacements_dev,
+                current_displacements_dev, new_displacements_dev,
+                numberOfNodes, courant);
 
-        
+        //if (timestepIndex % 1 == 0) {
+            //printf("old = %p\n", old_displacements_dev);
+            //printf("current = %p\n", current_displacements_dev);
+            //printf("new = %p\n\n", new_displacements_dev);
+        //}
+
         //Left boundary condition on the CPU - a sum of sine waves
         const float t = timestepIndex * dt;
         float left_boundary_value;
@@ -184,20 +213,29 @@ int main(int argc, char* argv[]) {
         } else {
             left_boundary_value = 0;
         }
-        
-        
-        /* TODO: Apply left and right boundary conditions on the GPU. 
+
+
+        /* TODO: Apply left and right boundary conditions on the GPU.
         The right boundary conditon will be 0 at the last position
         for all times t */
-        
+        // Apply left boundary value.
+        gpuErrchk(cudaMemset(new_displacements_dev, left_boundary_value,
+                    sizeof(float)));
+        // Apply right boundary value, which will always be 0.
+        gpuErrchk(cudaMemset(new_displacements_dev + numberOfNodes - 1, 0,
+                    sizeof(float)));
+
+
         // Check if we need to write a file
         if (CUDATEST_WRITE_ENABLED == true && numberOfOutputFiles > 0 &&
-                (timestepIndex+1) % (numberOfTimesteps / numberOfOutputFiles) 
+                (timestepIndex+1) % (numberOfTimesteps / numberOfOutputFiles)
                 == 0) {
-            
-            
+
+
             /* TODO: Copy data from GPU back to the CPU in file_output */
-            
+            gpuErrchk(cudaMemcpy(file_output, current_displacements_dev,
+                        numberOfNodes * sizeof(float), cudaMemcpyDeviceToHost));
+
             printf("writing an output file\n");
             // make a filename
             char filename[500];
@@ -210,15 +248,14 @@ int main(int argc, char* argv[]) {
             }
             fclose(file);
         }
-        
+
     }
-    
-    
+
+
     /* TODO: Clean up GPU memory */
-  
-  
+    free(data_dev);
 }
-  
+
   printf("You can now turn the output files into pictures by running "
          "\"python makePlots.py\". It should produce png files in the output "
          "directory. (You'll need to have gnuplot in order to produce the "
