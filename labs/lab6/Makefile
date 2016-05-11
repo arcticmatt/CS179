@@ -36,9 +36,15 @@ else
 endif
 
 
-TARGETS = Cuda1DFDWave
+TARGETS = Cuda1DFDWave 
 
 all: $(TARGETS)
+
+CudaGillespie: CudaGillespie.cc CudaGillespie_cuda.o 
+	$(CC) $< -o $@ CudaGillespie_cuda.o -O3 $(LDFLAGS) -Wall -lcurand -I$(CUDA_INC_PATH) -fopenmp
+
+CudaGillespie_cuda.o: CudaGillespie_cuda.cu
+	$(NVCC) $(NVCCFLAGS) -O3 $(EXTRA_NVCCFLAGS) $(GENCODE_FLAGS) -I$(CUDA_INC_PATH) -o $@ -c $<
 
 Cuda1DFDWave: Cuda1DFDWave.cc Cuda1DFDWave_cuda.o ta_utilities.o
 	$(CC) $< -o $@ Cuda1DFDWave_cuda.o ta_utilities.o -O3 $(LDFLAGS) -Wall -I$(CUDA_INC_PATH) -fopenmp
