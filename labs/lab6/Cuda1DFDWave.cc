@@ -153,6 +153,8 @@ int main(int argc, char* argv[]) {
 
 
   /************************* GPU Implementation *****************************/
+  // Note: This is the single gpu implementation. The multi gpu implementation
+  // is like my free time, nowhere to be found.
 
   {
 
@@ -163,13 +165,11 @@ int main(int argc, char* argv[]) {
     //Space on the CPU to copy file data back from GPU
     float *file_output = new float[numberOfNodes];
 
-    /* TODO: Create GPU memory for your calculations.
+    /* Create GPU memory for your calculations.
     As an initial condition at time 0, zero out your memory as well. */
     int data_length = numberOfNodes * 3;
     float *data_dev;
-    printf("data_dev = %p\n", data_dev);
     gpuErrchk(cudaMalloc((void **) &data_dev, data_length * sizeof(float)));
-    printf("data_dev = %p\n", data_dev);
     gpuErrchk(cudaMemset(data_dev, 0, data_length * sizeof(float)));
 
     // Looping through all times t = 0, ..., t_max
@@ -181,13 +181,6 @@ int main(int argc, char* argv[]) {
                  timestepIndex, 100 * timestepIndex / float(numberOfTimesteps));
         }
 
-
-        //if (timestepIndex % 1 == 0) {
-            //printf("old = %p\n", old_displacements_dev);
-            //printf("current = %p\n", current_displacements_dev);
-            //printf("new = %p\n\n", new_displacements_dev);
-        //}
-
         //Left boundary condition on the CPU - a sum of sine waves
         const float t = timestepIndex * dt;
         float left_boundary_value;
@@ -197,8 +190,6 @@ int main(int argc, char* argv[]) {
             left_boundary_value = 0;
         }
 
-        /* TODO: Call a kernel to solve the problem (you'll need to make
-        the kernel in the .cu file) */
         // Create pointers to old, current, and new displacements.
         float *old_displacements_dev = data_dev +
             ((timestepIndex - 1) % 3) * numberOfNodes;
@@ -217,7 +208,7 @@ int main(int argc, char* argv[]) {
                 == 0) {
 
 
-            /* TODO: Copy data from GPU back to the CPU in file_output */
+            /* Copy data from GPU back to the CPU in file_output */
             gpuErrchk(cudaMemcpy(file_output, current_displacements_dev,
                         numberOfNodes * sizeof(float), cudaMemcpyDeviceToHost));
 
@@ -237,7 +228,7 @@ int main(int argc, char* argv[]) {
     }
 
 
-    /* TODO: Clean up GPU memory */
+    /* Clean up GPU memory */
     cudaFree(data_dev);
 }
 
