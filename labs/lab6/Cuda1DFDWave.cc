@@ -8,7 +8,6 @@
 #include <cmath>
 #include <vector>
 #include <fstream>
-#include <cassert>
 
 
 #include <cuda_runtime.h>
@@ -30,6 +29,12 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
 
 
 int main(int argc, char* argv[]) {
+  // These functions allow you to select the least utilized GPU
+  // on your system as well as enforce a time limit on program execution.
+  // Please leave these enabled as a courtesy to your fellow classmates
+  // if you are using a shared computer. You may ignore or remove these
+  // functions if you are running on your local machine.
+
   if (argc < 3){
       printf("Usage: (threads per block) (max number of blocks)\n");
       exit(-1);
@@ -149,11 +154,6 @@ int main(int argc, char* argv[]) {
 
   /************************* GPU Implementation *****************************/
 
-  int num_devices = 0;
-  gpuErrchk(cudaGetDeviceCount(&num_devices));
-  assert(num_devices > 0);
-  const unsigned int comm_interval = 3;
-
   {
 
 
@@ -163,13 +163,9 @@ int main(int argc, char* argv[]) {
     //Space on the CPU to copy file data back from GPU
     float *file_output = new float[numberOfNodes];
 
-    /* DONE: Create GPU memory for your calculations.
+    /* TODO: Create GPU memory for your calculations.
     As an initial condition at time 0, zero out your memory as well. */
-    int orig_data_length = numberOfNodes * 3;
-    // There are two garbage regions per device, each with a size of 3.
-    int redundant_data_length = comm_interval * num_devices * 2;
-    int data_length = orig_data_length + redundant_data_length;
-    int reg_dev_data_length = (numberOfNodes / num_devices) + comm_interval * 2;
+    int data_length = numberOfNodes * 3;
     float *data_dev;
     printf("data_dev = %p\n", data_dev);
     gpuErrchk(cudaMalloc((void **) &data_dev, data_length * sizeof(float)));
@@ -185,6 +181,13 @@ int main(int argc, char* argv[]) {
                  timestepIndex, 100 * timestepIndex / float(numberOfTimesteps));
         }
 
+
+        //if (timestepIndex % 1 == 0) {
+            //printf("old = %p\n", old_displacements_dev);
+            //printf("current = %p\n", current_displacements_dev);
+            //printf("new = %p\n\n", new_displacements_dev);
+        //}
+
         //Left boundary condition on the CPU - a sum of sine waves
         const float t = timestepIndex * dt;
         float left_boundary_value;
@@ -194,6 +197,8 @@ int main(int argc, char* argv[]) {
             left_boundary_value = 0;
         }
 
+        /* TODO: Call a kernel to solve the problem (you'll need to make
+        the kernel in the .cu file) */
         // Create pointers to old, current, and new displacements.
         float *old_displacements_dev = data_dev +
             ((timestepIndex - 1) % 3) * numberOfNodes;
@@ -201,71 +206,10 @@ int main(int argc, char* argv[]) {
             ((timestepIndex + 0) % 3) * numberOfNodes;
         float *new_displacements_dev = data_dev +
             ((timestepIndex + 1) % 3) * numberOfNodes;
-
-        // If we're at the correct timestep, perform data exchanges. This
-        // ensures that multiple gpus can run on the data.
-        float *curr_old_displacements[2];
-        curr_old_displacements[0] = old_displacements_dev;
-        curr_old_displacements[1] = current_displacements_dev;
-        if (timestepIndex % comm_interval == 0) {
-            for (int i = 0; i < 2; i++) {
-                float *displacements = curr_old_displacements[i];
-                for (int dev_number = 0; dev_number < num_devices - 1; dev_number++) {
-                    // dev_number = left, dev_number + 1 = right.
-                    // Num bytes before left block.
-                    int left_prev = reg_dev_data_length * dev_number;
-                    float *left_redundant = displacements +
-                        (left_prev + comm_interval + numberOfNodes);
-                    float *left_good = left_redundant - comm_interval;
-                    // Num bytes before right block.
-                    int right_prev = left_prev + reg_dev_data_length;
-                    float *right_redundant = displacements + right_prev;
-                    float *right_good = right_redundant + comm_interval;
-                    // Copy right-to-left.
-                    gpuErrchk(cudaMemcpyPeer(left_redundant, dev_number, right_good,
-                            dev_number + 1, comm_interval * sizeof(float)));
-                    // Copy left-to-right.
-                    gpuErrchk(cudaMemcpyPeer(right_redundant, dev_number + 1,
-                            left_good, dev_number, comm_interval * sizeof(float)));
-                }
-            }
-        }
-
-        // Multi-gpu implementation.
-        // Iterate through each device and call the kernel on a different gpu.
-        int dev_number_of_nodes = 0;
-        int dev_length = numberOfNodes + (comm_interval * 2 * num_devices);
-        for (int dev_number = 0; dev_number < num_devices; dev_number++) {
-            // Set device for the kernel to run on.
-            gpuErrchk(cudaSetDevice(dev_number));
-
-            if (dev_number < num_devices - 1) {
-                // If we're not on the last device...
-                dev_number_of_nodes = reg_dev_data_length;
-            } else {
-                dev_number_of_nodes = dev_length -
-                    (reg_dev_data_length * (num_devices - 1));
-            }
-
-            // Call the kernel, which sets the boundary values.
-            cudaCallWaveSolverKernel(blocks, threadsPerBlock, old_displacements_dev,
-                    current_displacements_dev, new_displacements_dev,
-                    dev_number_of_nodes, courant, left_boundary_value);
-
-            // Increment pointers in preparation for next kernel call.
-            old_displacements_dev += dev_number_of_nodes;
-            current_displacements_dev += dev_number_of_nodes;
-            new_displacements_dev += dev_number_of_nodes;
-        }
-
-        // Reset pointers
-        old_displacements_dev = data_dev +
-            ((timestepIndex - 1) % 3) * numberOfNodes;
-        current_displacements_dev = data_dev +
-            ((timestepIndex + 0) % 3) * numberOfNodes;
-        new_displacements_dev = data_dev +
-            ((timestepIndex + 1) % 3) * numberOfNodes;
-
+        // Call the kernel, which sets the boundary values.
+        cudaCallWaveSolverKernel(blocks, threadsPerBlock, old_displacements_dev,
+                current_displacements_dev, new_displacements_dev,
+                numberOfNodes, courant, left_boundary_value);
 
         // Check if we need to write a file
         if (CUDATEST_WRITE_ENABLED == true && numberOfOutputFiles > 0 &&
@@ -273,7 +217,7 @@ int main(int argc, char* argv[]) {
                 == 0) {
 
 
-            /* DONE: Copy data from GPU back to the CPU in file_output */
+            /* TODO: Copy data from GPU back to the CPU in file_output */
             gpuErrchk(cudaMemcpy(file_output, current_displacements_dev,
                         numberOfNodes * sizeof(float), cudaMemcpyDeviceToHost));
 
@@ -293,7 +237,7 @@ int main(int argc, char* argv[]) {
     }
 
 
-    /* DONE: Clean up GPU memory */
+    /* TODO: Clean up GPU memory */
     cudaFree(data_dev);
 }
 
