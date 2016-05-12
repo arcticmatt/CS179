@@ -139,11 +139,13 @@ int main(int argc, char* argv[]) {
                 cudaMemcpyDeviceToHost));
 
     // Print means and variances.
+    printf("=== means ===\n");
     for (int i = 0; i < SAMPLE_SIZE; i++) {
-        printf("mean[%d] = %f\n", i, sample_means_host[i]);
+        printf("%f\n", sample_means_host[i]);
     }
+    printf("\n\n\n=== variances ===\n");
     for (int i = 0; i < SAMPLE_SIZE; i++) {
-        printf("vars[%d] = %f\n", i, sample_vars_host[i]);
+        printf("%f\n", sample_vars_host[i]);
     }
 
     // Free host memory.
