@@ -9,6 +9,7 @@
 #include <curand.h>
 
 #include "CudaGillespie_cuda.cuh"
+#include "ta_utilities.hpp"
 
 /* Check errors on CUDA runtime functions */
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
@@ -17,14 +18,14 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
     if (code != cudaSuccess)
     {
         fprintf(stderr,"GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
+        fprintf(stderr, "code = %d\n", code);
         exit(code);
     }
 }
 
 int main(int argc, char* argv[]) {
     if (argc != 4) {
-        printf("Usage: (threads per block) (max number of blocks)
-                (num simulations)\n");
+        printf("Usage: (threads per block) (max number of blocks) (num simulations)\n");
         exit(-1);
     }
 
@@ -38,19 +39,19 @@ int main(int argc, char* argv[]) {
     const float k_off = 0.9;
     // Rand number generator
     curandGenerator_t gen;
-    /* Create pseudo-random number generator */
+    // Create pseudo-random number generator
     curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
-    /* Set seed */
+    // Set seed
     curandSetPseudoRandomGeneratorSeed(gen, 1234ULL);
 
-    /*** Host memory ***/
+    // === Host memory ===
     // Mean and variance.
     float *sample_means_host = new float[SAMPLE_SIZE];
     float *sample_vars_host = new float[SAMPLE_SIZE];
     float min_time_host = 0;
     float big_float = INT_MAX;
 
-    /*** Device memory ***/
+    // === Device memory ===
     size_t sim_size = num_simulations * sizeof(float);
     // Arrays that contain random floats (0 - 1) for choosing transitions and
     // timesteps.
@@ -71,30 +72,28 @@ int main(int argc, char* argv[]) {
     gpuErrchk(cudaMalloc((void **) &rand_reactions_dev, sim_size));
     gpuErrchk(cudaMalloc((void **) &rand_times_dev, sim_size));
     gpuErrchk(cudaMalloc((void **) &simulation_times_dev, sim_size));
-    gpuErrchk(cudaMalloc((void **), &simulation_concentrations_dev, sim_size));
-    gpuErrchk(cudaMalloc((void **), &simulation_states_dev, sim_size));
-    gpuErrchk(cudaMalloc((void **), &min_time_dev, sizeof(float)));
-    gpuErrchk(cudaMalloc((void **), &last_sample_indices_dev, sim_size));
-    gpuErrchk(cudaMalloc((void **), &simulation_samples_dev, sim_size * SAMPLE_SIZE));
-    gpuErrchk(cudaMalloc((void **), &sample_means_dev, SAMPLE_SIZE));
-    gpuErrchk(cudaMalloc((void **), &sample_vars_dev, SAMPLE_SIZE));
+    gpuErrchk(cudaMalloc((void **) &simulation_concentrations_dev, sim_size));
+    gpuErrchk(cudaMalloc((void **) &simulation_states_dev, sim_size));
+    gpuErrchk(cudaMalloc((void **) &min_time_dev, sizeof(float)));
+    gpuErrchk(cudaMalloc((void **) &last_sample_indices_dev, sim_size));
+    gpuErrchk(cudaMalloc((void **) &simulation_samples_dev, sim_size * SAMPLE_SIZE));
+    gpuErrchk(cudaMalloc((void **) &sample_means_dev, SAMPLE_SIZE * sizeof(float)));
+    gpuErrchk(cudaMalloc((void **) &sample_vars_dev, SAMPLE_SIZE * sizeof(float)));
 
     // Memset device memory.
     gpuErrchk(cudaMemset(simulation_times_dev, 0, sim_size));
     gpuErrchk(cudaMemset(simulation_concentrations_dev, 0, sim_size));
-    // TODO: check this
-    gpuErrchk(cudaMemset(simulation_states_dev, OFF, sim_size));
+    gpuErrchk(cudaMemset(simulation_states_dev, 0, sim_size));
     gpuErrchk(cudaMemset(last_sample_indices_dev, 0, sim_size));
     gpuErrchk(cudaMemset(simulation_samples_dev, 0, sim_size * SAMPLE_SIZE));
-    gpuErrchk(cudaMemset(sample_means_dev, 0, SAMPLE_SIZE));
-    gpuErrchk(cudaMemset(sample_vars_dev, 0, SAMPLE_SIZE));
-    
-    float sample_time = 0;
-    int sample_index = 0;
+    gpuErrchk(cudaMemset(sample_means_dev, 0, SAMPLE_SIZE * sizeof(float)));
+    gpuErrchk(cudaMemset(sample_vars_dev, 0, SAMPLE_SIZE * sizeof(float)));
+
+    int iter = 0;
     while (true) {
         // Fill random arrays.
-        curandGenerateUniform(gen, rand_reactions_dev, n);
-        curandGenerateUniform(gen, rand_times_dev, n);
+        curandGenerateUniform(gen, rand_reactions_dev, num_simulations);
+        curandGenerateUniform(gen, rand_times_dev, num_simulations);
 
         // Gillespie algorithm to update states, concentrations.
         cudaCallGillespieTimestepKernel(blocks, threads_per_block, rand_reactions_dev,
@@ -103,10 +102,10 @@ int main(int argc, char* argv[]) {
 
         // Resampling kernel to populate simulation_samples_dev.
         cudaCallResamplingKernel(blocks, threads_per_block, simulation_samples_dev,
-                last_sample_indices_dev, simulation_times_dev, 
-                simulation_concentrations_dev, sample_time, num_simulations);
+                last_sample_indices_dev, simulation_times_dev,
+                simulation_concentrations_dev, num_simulations);
 
-        // Memset min_time_dev to be a very large number.
+        // Set min_time_dev to be a very large number.
         gpuErrchk(cudaMemcpy(min_time_dev, &big_float, sizeof(float),
                     cudaMemcpyHostToDevice));
         // Get min of simulation_times.
@@ -115,19 +114,15 @@ int main(int argc, char* argv[]) {
         // Copy min_time_dev back to host.
         gpuErrchk(cudaMemcpy(&min_time_host, min_time_dev, sizeof(float),
                     cudaMemcpyDeviceToHost));
-        
+
         if (min_time_host >= SAMPLE_TIME) {
             break;
         }
-        
-        // Keep sample_index stuck at the last one.
-        if (sample_index < SAMPLE_SIZE - 1) {
-            sample_index++;
-            sample_time += (float) SAMPLE_TIME / SAMPLE_SIZE;
-        }
+
+        iter++;
     }
 
-    for (int i = 0; i < SAMPLE_SIZE; i++) { 
+    for (int i = 0; i < SAMPLE_SIZE; i++) {
         // Calculate mean of simulation_samples.
         cudaCallMeanKernel(blocks, threads_per_block, simulation_samples_dev,
                 sample_means_dev, i, num_simulations);
@@ -138,9 +133,9 @@ int main(int argc, char* argv[]) {
     }
 
     // Copy means and vars back to host.
-    gpuErrchk(cudaMemcpy(sample_means_host, sample_means_dev, SAMPLE_SIZE,
+    gpuErrchk(cudaMemcpy(sample_means_host, sample_means_dev, SAMPLE_SIZE * sizeof(float),
                 cudaMemcpyDeviceToHost));
-    gpuErrchk(cudaMemcpy(sample_vars_host, sample_vars_dev, SAMPLE_SIZE,
+    gpuErrchk(cudaMemcpy(sample_vars_host, sample_vars_dev, SAMPLE_SIZE * sizeof(float),
                 cudaMemcpyDeviceToHost));
 
     // Print means and variances.
@@ -167,4 +162,3 @@ int main(int argc, char* argv[]) {
     cudaFree(sample_means_dev);
     cudaFree(sample_vars_dev);
 }
-

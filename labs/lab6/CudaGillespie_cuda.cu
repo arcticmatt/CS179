@@ -31,14 +31,14 @@ __device__ static float atomicMin(float* address, float val)
 
 
 /*
- * Gillespie kernel. Each call to the kernel will advance each simulation 
- * by one step. 
+ * Gillespie kernel. Each call to the kernel will advance each simulation
+ * by one step.
  *
- * We use the random numbers in rand_reactions to decide which transition 
- * occurs, and the random numbers in rand_times to decide on a dt. 
+ * We use the random numbers in rand_reactions to decide which transition
+ * occurs, and the random numbers in rand_times to decide on a dt.
  *
- * The times in simulation_times get updated with the calculated dt, 
- * and the concentrations/states may or may not get updated depending on the 
+ * The times in simulation_times get updated with the calculated dt,
+ * and the concentrations/states may or may not get updated depending on the
  * transition.
  */
 __global__
@@ -81,13 +81,13 @@ cudaGillespieTimestepKernel(const float *rand_reactions,
             float cutoff2 = cutoff1 + (b / lambda);
 
             if (rand_reaction < cutoff1) {
-                // Flip to off 
-                simulation_states[thread_inex] = OFF;
+                // Flip to off
+                simulation_states[thread_index] = OFF;
             } else if (rand_reaction < cutoff2) {
-                // Grow 
+                // Grow
                 simulation_concentrations[thread_index]++;
             } else {
-                // Decay 
+                // Decay
                 simulation_concentrations[thread_index]--;
             }
         }
@@ -117,7 +117,7 @@ void cudaCallGillespieTimestepKernel(const unsigned int blocks,
                                      const float k_off,
                                      const unsigned int num_simulations) {
     cudaGillespieTimestepKernel<<<blocks, threads_per_block>>>(rand_reactions,
-            rand_times, simulation_times, simulation_concentrations, 
+            rand_times, simulation_times, simulation_concentrations,
             simulation_states, b, g, k_on, k_off, num_simulations);
 }
 
@@ -127,20 +127,14 @@ void cudaCallGillespieTimestepKernel(const unsigned int blocks,
  * the values in an array of uniformly spaced samples. We use 1000 points
  * "evenly" spaced from 0 to 100.
  *
- * We use the array last_sample_index to see, for each simulation, how much 
- * of the evenly spaced array we have filled thus far. Then, we check 
- * to see if that simulation has reached a point at which we can fill more.
- * If so, we will fill the corresponding array up until the latest point.
- * E.g. if the last time for that simulation was .9 and the last filled index
- * was 6, then we will up to the 10th index.
+ *
  */
 __global__
-void 
+void
 cudaResamplingKernel(float *simulation_samples,
-                     int *last_sample_indices, 
+                     int *last_sample_indices,
                      const float *simulation_times,
                      const float *simulation_concentrations,
-                     const unsigned int sample_time,
                      const unsigned int num_simulations) {
     // Get current thread's index.
     unsigned int thread_index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -150,18 +144,23 @@ cudaResamplingKernel(float *simulation_samples,
         float *curr_sample = simulation_samples + (thread_index * SAMPLE_SIZE);
         float curr_time = simulation_times[thread_index];
         int last_sample_index = last_sample_indices[thread_index];
+        int curr_index = curr_time / ((float) SAMPLE_TIME / SAMPLE_SIZE);
 
-        // If the last simulated time is greater than the sample time,
-        // and the sample array is not full, add to it.
-        if (curr_time >= sample_time && last_sample_index < SAMPLE_SIZE - 1) {
+        // If the index corresponding to the current simulation time is
+        // beyond the last sample index, populate the array up to the
+        // curr_index.
+        if (curr_index > last_sample_index
+                && last_sample_index < SAMPLE_SIZE) {
             float curr_conc = simulation_concentrations[thread_index];
-            int curr_sample_index = sample_time / ((float) SAMPLE_TIME / SAMPLE_SIZE);
-            last_sample_index++;
-            while (last_sample_index < curr_sample_index) {
+
+            while (last_sample_index <= curr_index
+                    && last_sample_index < SAMPLE_SIZE) {
                 curr_sample[last_sample_index++] = curr_conc;
             }
-            last_sample_index--;
         }
+
+        // Update last_sample_indices in GPU memory.
+        last_sample_indices[thread_index] = last_sample_index;
 
         // Update thread_index.
         thread_index += blockDim.x * gridDim.x;
@@ -174,14 +173,13 @@ cudaResamplingKernel(float *simulation_samples,
 void cudaCallResamplingKernel(const unsigned int blocks,
                               const unsigned int threads_per_block,
                               float *simulation_samples,
-                              int *last_sample_indices, 
+                              int *last_sample_indices,
                               const float *simulation_times,
                               const float *simulation_concentrations,
-                              const unsigned int sample_time,
                               const unsigned int num_simulations) {
     cudaResamplingKernel<<<blocks, threads_per_block>>>(simulation_samples,
             last_sample_indices, simulation_times, simulation_concentrations,
-            sample_time, num_simulations);
+            num_simulations);
 }
 
 /*
@@ -189,7 +187,7 @@ void cudaCallResamplingKernel(const unsigned int blocks,
  * copied from the "maximum kernel" from lab 3.
  */
 __global__
-void 
+void
 cudaMinimumKernel(const float *simulation_times,
                   float *min_val,
                   const unsigned int num_simulations) {
@@ -199,7 +197,7 @@ cudaMinimumKernel(const float *simulation_times,
     unsigned int thread_index = blockIdx.x * blockDim.x + threadIdx.x;
     float thread_min = INT_MAX;
 
-    while (thread_index < padded_length) {
+    while (thread_index < num_simulations) {
         // Find the maximum MAGNITUDE (take abs value) for this thread.
         thread_min = min(thread_min, simulation_times[thread_index]);
 
@@ -233,17 +231,17 @@ void cudaCallMinimumKernel(const unsigned int blocks,
                            const float *simulation_times,
                            float *min_val,
                            const unsigned int num_simulations) {
-    cudaMinimumKernel<<<blocks, threads_per_block, num_simulations>>>(
+    cudaMinimumKernel<<<blocks, threads_per_block, threads_per_block * sizeof(float)>>>(
             simulation_times, min_val, num_simulations);
 }
 
 /*
- * Mean kernel. For each timepoint, we want to get the mean value for all the 
- * simulations. This means we must sum the values of all the simulations at 
+ * Mean kernel. For each timepoint, we want to get the mean value for all the
+ * simulations. This means we must sum the values of all the simulations at
  * that timepoint, then divide by the total number of simulations.
  */
 __global__
-void 
+void
 cudaMeanKernel(float *simulation_samples,
                float *sample_means,
                const unsigned int sample_index,
@@ -252,12 +250,13 @@ cudaMeanKernel(float *simulation_samples,
 
     // Get current thread's index.
     unsigned int thread_index = blockIdx.x * blockDim.x + threadIdx.x;
+    sdata[threadIdx.x] = 0;
 
     // Go through every simulation.
     while (thread_index < num_simulations) {
         float *curr_sample = simulation_samples + (thread_index * SAMPLE_SIZE);
-        float sample_conc = curr_sample[sample_index];        
-        sdata[thread_index] = sample_conc;
+        float sample_conc = curr_sample[sample_index];
+        sdata[threadIdx.x] += sample_conc;
 
         // Update thread_index.
         thread_index += blockDim.x * gridDim.x;
@@ -273,42 +272,35 @@ cudaMeanKernel(float *simulation_samples,
             block_sum += sdata[thread_idx];
         }
 
-        // Add block's sum to average.
+        block_sum /= (float) num_simulations;
         atomicAdd(sample_means + sample_index, block_sum);
-    }
-
-    __syncthreads();
-
-    // Now divide average by number of simulations.
-    if (thread_index == 0) {
-        sample_means[sample_index] /= (float) num_simulations;
     }
 }
 
 /*
  * Helper function to call mean kernel.
- */ 
+ */
 void cudaCallMeanKernel(const unsigned int blocks,
                         const unsigned int threads_per_block,
                         float *simulation_samples,
                         float *sample_means,
                         const unsigned int sample_index,
                         const unsigned int num_simulations) {
-    cudaMeanKernel<<<blocks, threads_per_block, num_simulations>>>(
+    cudaMeanKernel<<<blocks, threads_per_block, threads_per_block * sizeof(float)>>>(
             simulation_samples, sample_means, sample_index,
             num_simulations);
 }
 
 /*
- * Variance kernel. For each timepoint, we want to get the variance for all the 
- * simulations. This means we must take sum the squared differences from the mean 
+ * Variance kernel. For each timepoint, we want to get the variance for all the
+ * simulations. This means we must take sum the squared differences from the mean
  * at that timepoint, then divide by the total number of simulations. We rely
  * on the fact that sample_means has been populated at sample_index
  * (i.e. sample_means[sample_index] holds the correct average) for this
  * kernel to work.
  */
 __global__
-void 
+void
 cudaVarianceKernel(float *simulation_samples,
                    float *sample_vars,
                    float *sample_means,
@@ -319,13 +311,14 @@ cudaVarianceKernel(float *simulation_samples,
     // Get current thread's index.
     unsigned int thread_index = blockIdx.x * blockDim.x + threadIdx.x;
     float average = sample_means[sample_index];
+    sdata[threadIdx.x] = 0;
 
     // Go through every simulation.
     while (thread_index < num_simulations) {
         float *curr_sample = simulation_samples + (thread_index * SAMPLE_SIZE);
-        float sample_conc = curr_sample[sample_index];        
-        float sq_diff = powf(average - sample_conc);
-        sdata[thread_index] = sq_diff;
+        float sample_conc = curr_sample[sample_index];
+        float sq_diff = powf(average - sample_conc, 2);
+        sdata[threadIdx.x] += sq_diff;
 
         // Update thread_index.
         thread_index += blockDim.x * gridDim.x;
@@ -341,21 +334,14 @@ cudaVarianceKernel(float *simulation_samples,
             block_sum += sdata[thread_idx];
         }
 
-        // Add block's sum to average.
-        atomicAdd(sample_means + sample_index, block_sum);
-    }
-
-    __syncthreads();
-
-    // Now divide average by number of simulations.
-    if (thread_index == 0) {
-        sample_vars[sample_index] /= (float) num_simulations;
+        block_sum /= (float) num_simulations;
+        atomicAdd(sample_vars + sample_index, block_sum);
     }
 }
 
 /*
  * Helper function to call variance kernel.
- */ 
+ */
 void cudaCallVarianceKernel(const unsigned int blocks,
                             const unsigned int threads_per_block,
                             float *simulation_samples,
@@ -363,7 +349,7 @@ void cudaCallVarianceKernel(const unsigned int blocks,
                             float *sample_means,
                             const unsigned int sample_index,
                             const unsigned int num_simulations) {
-    cudaMeanKernel<<<blocks, threads_per_block, num_simulations>>>(
-            simulation_samples, sample_vars, sample_means, 
+    cudaVarianceKernel<<<blocks, threads_per_block, threads_per_block * sizeof(float)>>>(
+            simulation_samples, sample_vars, sample_means,
             sample_index, num_simulations);
 }
