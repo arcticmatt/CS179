@@ -127,7 +127,9 @@ void cudaCallGillespieTimestepKernel(const unsigned int blocks,
  * the values in an array of uniformly spaced samples. We use 1000 points
  * "evenly" spaced from 0 to 100.
  *
- *
+ * For each simulation, check its current time. If the index corresponding
+ * to this time exceeds the last filled index, fill up to the current index.
+ * Then, update the last filled index.
  */
 __global__
 void
