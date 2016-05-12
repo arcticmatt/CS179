@@ -115,6 +115,7 @@ int main(int argc, char* argv[]) {
         gpuErrchk(cudaMemcpy(&min_time_host, min_time_dev, sizeof(float),
                     cudaMemcpyDeviceToHost));
 
+        // If all simulations have finished, break.
         if (min_time_host >= SAMPLE_TIME) {
             break;
         }
